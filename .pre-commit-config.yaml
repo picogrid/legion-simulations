@@ -1,0 +1,23 @@
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+fail_fast: true
+
+repos:
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.1.5
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run --fix --timeout 5m
+        stages: [ pre-commit ]
+
+  #  Run Unit Tests
+  - repo: local
+    hooks:
+      - id: unit-test
+        name: Run unit tests
+        entry: make unit-test
+        language: system
+        stages: [ pre-push ]
+        pass_filenames: false

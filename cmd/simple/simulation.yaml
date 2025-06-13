@@ -1,0 +1,39 @@
+name: "Simple Entity Test"
+description: "Basic drone simulation for testing Legion connectivity"
+version: "1.0.0"
+category: "test"
+
+parameters:
+  - name: "num_entities"
+    type: "integer"
+    description: "Number of drones to create (1-5)"
+    default: 2
+    min: 1
+    max: 5
+    required: true
+  
+  - name: "entity_type"
+    type: "string"
+    description: "Type of entity to create"
+    default: "Drone"
+    options: ["Drone"]
+    required: true
+  
+  - name: "update_interval"
+    type: "float"
+    description: "How often to update entity location (seconds)"
+    default: 5.0
+    min: 1.0
+    max: 60.0
+    required: true
+  
+  - name: "duration"
+    type: "duration"
+    description: "How long to run the simulation"
+    default: "1m"
+    required: true
+  
+  - name: "organization_id"
+    type: "string"
+    description: "Organization ID for entity creation"
+    required: true

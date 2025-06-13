@@ -1,0 +1,28 @@
+# .github/workflows/tests.yml
+name: CI Tests
+
+on:
+  # Triggered on ALL PR events
+  pull_request:
+    types:
+      [
+        opened,
+        synchronize,
+        reopened,
+        ready_for_review,
+      ]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    uses: ./.github/workflows/lint.yml
+    secrets: inherit
+
+  unit-tests:
+    name: Unit Tests
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
+    needs: lint
