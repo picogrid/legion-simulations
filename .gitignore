@@ -69,3 +69,4 @@ handlers.test
 
 .claude
 /bin/*
+reports/*

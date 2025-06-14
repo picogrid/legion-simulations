@@ -78,6 +78,14 @@ Environments are stored in `~/.legion/config.yaml`
 # Interactive mode - prompts for all options
 ./bin/legion-sim run
 
+# The CLI will:
+# 1. Prompt for environment selection (or use LEGION_URL/LEGION_API_KEY env vars)
+# 2. Authenticate with Legion (OAuth or API key)
+# 3. Prompt for organization selection (or use LEGION_ORG_ID env var)
+# 4. Show available simulations
+# 5. Prompt for simulation parameters
+# 6. Run the simulation
+
 # List available simulations
 ./bin/legion-sim list
 ```

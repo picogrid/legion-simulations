@@ -1,0 +1,17 @@
+# Large Scale Battle Configuration
+# 100 UAS threats vs 20 Counter-UAS systems
+organization_id: "ecc2dce2-b664-4077-b34c-ea89e1fb045e"
+num_counter_uas_systems: 20
+num_uas_threats: 100
+waves: 10
+engagement_type_mix: 0.6  # 60% kinetic, 40% EW
+swarm_formation_type: "waves"
+defense_placement_pattern: "cluster"
+update_interval: "500ms"
+duration: "5m"
+center_latitude: 37.7749
+center_longitude: -122.4194
+center_altitude: 100.0
+log_level: "info"
+enable_aar: true
+cleanup_existing: true
