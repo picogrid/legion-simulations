@@ -28,15 +28,25 @@ func PromptForParameters(params []simulation.Parameter) (map[string]interface{},
 
 // promptForParameter prompts for a single parameter
 func promptForParameter(param simulation.Parameter) (interface{}, error) {
-	// Check for environment variable override
-	envKey := "LEGION_" + strings.ToUpper(param.Name)
-	if envValue := os.Getenv(envKey); envValue != "" {
-		return parseEnvValue(envValue, param)
+	// Check if we should skip prompts entirely (for CI/automation)
+	if os.Getenv("LEGION_SKIP_PROMPTS") == "true" {
+		// Check for environment variable override
+		envKey := "LEGION_" + strings.ToUpper(param.Name)
+		if envValue := os.Getenv(envKey); envValue != "" {
+			return parseEnvValue(envValue, param)
+		}
+		// Use default if no env var set
+		if param.Default != nil {
+			return param.Default, nil
+		}
+		if param.Required {
+			return nil, fmt.Errorf("required parameter %s not provided and no default available", param.Name)
+		}
 	}
 
-	// Check for default environment variable
-	defaultEnvKey := "DEFAULT_" + strings.ToUpper(param.Name)
-	if envValue := os.Getenv(defaultEnvKey); envValue != "" {
+	// Check for environment variable to use as default
+	envKey := "LEGION_" + strings.ToUpper(param.Name)
+	if envValue := os.Getenv(envKey); envValue != "" {
 		// Update the default value from environment
 		parsed, err := parseEnvValue(envValue, param)
 		if err == nil {
@@ -72,11 +82,11 @@ func parseEnvValue(value string, param simulation.Parameter) (interface{}, error
 	case "boolean":
 		return strconv.ParseBool(value)
 	case "duration":
-		_, err := time.ParseDuration(value)
+		duration, err := time.ParseDuration(value)
 		if err != nil {
 			return nil, err
 		}
-		return value, nil
+		return duration, nil
 	default:
 		return nil, fmt.Errorf("unsupported parameter type: %s", param.Type)
 	}
@@ -227,7 +237,7 @@ func promptBoolean(param simulation.Parameter) (bool, error) {
 	return result, nil
 }
 
-func promptDuration(param simulation.Parameter) (string, error) {
+func promptDuration(param simulation.Parameter) (time.Duration, error) {
 	defaultStr := ""
 	if param.Default != nil {
 		defaultStr = fmt.Sprintf("%v", param.Default)
@@ -247,10 +257,15 @@ func promptDuration(param simulation.Parameter) (string, error) {
 		}
 		return nil
 	})); err != nil {
-		return "", err
+		return 0, err
 	}
 
-	return result, nil
+	duration, err := time.ParseDuration(result)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse duration: %w", err)
+	}
+
+	return duration, nil
 }
 
 // Helper functions

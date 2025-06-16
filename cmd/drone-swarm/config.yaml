@@ -1,0 +1,94 @@
+# Drone Swarm Simulation Configuration
+simulation:
+  name: "drone-swarm"
+  description: "Counter-UAS vs Drone Swarm Engagement Simulation"
+  update_interval: 3s
+  
+performance:
+  worker_pool_size: 10
+  batch_size: 50
+  api_rate_limit: 100
+  update_flush_interval: 1s
+  max_concurrent_goroutines: 20
+  
+swarm_config:
+  formation_type: "distributed"  # distributed, concentrated, waves
+  wave_delay: 45s
+  wave_count: 3
+  autonomy_distribution: "mixed"  # low, mixed, high
+  evasion_probability: 0.7
+  speed_range:
+    min: 50   # kph
+    max: 200  # kph
+  
+defense_config:
+  placement_pattern: "ring"  # ring, cluster, line
+  engagement_rules: "closest"  # closest, highest_threat, distributed
+  kinetic_ratio: 0.7
+  success_rate_modifier: 1.0  # difficulty adjustment
+  detection_radius_km: 10
+  engagement_radius_km: 5
+  kinetic_cooldown_range:
+    min: 5  # seconds
+    max: 8
+  ew_cooldown_range:
+    min: 8  # seconds
+    max: 10
+  
+logging:
+  console_level: "info"  # debug, info, warn, error
+  enable_aar: true
+  aar_format: "detailed"  # summary, detailed, full
+  aar_output_path: "./reports/"
+  event_buffer_size: 1000
+  
+# Default simulation parameters (can be overridden via CLI)
+defaults:
+  num_counter_uas_systems: 5
+  num_uas_threats: 20
+  engagement_type_mix: 0.7  # 70% kinetic, 30% EW
+  center_location:
+    latitude: 40.044437
+    longitude: -76.306229
+    altitude: 100
+  
+# Advanced options
+advanced:
+  enable_metrics: true
+  metrics_export_interval: 10s
+  record_replay: false
+  replay_file_path: "./replays/"
+  verbose_logging: false
+  debug_engagement_calculations: false
+  randomize_spawn_locations: true
+  spawn_radius_km: 12
+  
+# Engagement parameters
+engagement:
+  kinetic_success_rate_range:
+    min: 0.7
+    max: 0.9
+  ew_success_rate_range:
+    min: 0.5
+    max: 0.7
+  kinetic_ammo_capacity: 5
+  jamming_autonomy_threshold: 0.5  # Drones with autonomy < 0.5 can be jammed
+  
+# Target prioritization weights
+target_priority:
+  distance_weight: 0.5
+  speed_weight: 0.3
+  role_weight: 0.2
+  role_multipliers:
+    leader: 1.5
+    follower: 1.0
+    scout: 1.2
+    
+# Victory conditions
+termination:
+  success_conditions:
+    - all_threats_neutralized  # All UAS are ELIMINATED or JAMMED
+  failure_conditions:
+    - defensive_breach  # Any UAS reaches MISSION_COMPLETE
+  stalemate_conditions:
+    - all_systems_depleted  # All Counter-UAS are DEPLETED with active threats

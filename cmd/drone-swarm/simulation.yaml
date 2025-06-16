@@ -1,0 +1,99 @@
+name: "Drone Swarm Combat"
+description: "Counter-UAS systems defending against coordinated drone swarm attacks"
+author: "Legion Simulations Team"
+version: "1.0.0"
+category: "defense"
+
+parameters:
+  - name: "organization_id"
+    type: "string"
+    description: "Legion organization ID"
+    required: true
+    env: "LEGION_ORGANIZATION_ID"
+  
+  - name: "num_counter_uas_systems"
+    type: "integer"
+    description: "Number of Counter-UAS defensive systems"
+    default: 10
+    env: "LEGION_NUM_COUNTER_UAS_SYSTEMS"
+  
+  - name: "num_uas_threats"
+    type: "integer"
+    description: "Number of attacking UAS drones"
+    default: 50
+    env: "LEGION_NUM_UAS_THREATS"
+  
+  - name: "waves"
+    type: "integer"
+    description: "Number of attack waves"
+    default: 5
+    env: "LEGION_WAVES"
+  
+  - name: "engagement_type_mix"
+    type: "float"
+    description: "Ratio of kinetic vs electronic warfare systems (0.7 = 70% kinetic)"
+    default: 0.7
+    env: "LEGION_ENGAGEMENT_TYPE_MIX"
+  
+  - name: "swarm_formation_type"
+    type: "string"
+    description: "Formation type for UAS threats"
+    options: ["distributed", "concentrated", "waves"]
+    default: "distributed"
+    env: "LEGION_SWARM_FORMATION_TYPE"
+  
+  - name: "defense_placement_pattern"
+    type: "string"
+    description: "Placement pattern for Counter-UAS systems"
+    options: ["ring", "cluster", "line"]
+    default: "ring"
+    env: "LEGION_DEFENSE_PLACEMENT_PATTERN"
+  
+  - name: "update_interval"
+    type: "duration"
+    description: "Simulation update frequency"
+    default: "1s"
+    env: "LEGION_UPDATE_INTERVAL"
+  
+  - name: "duration"
+    type: "duration"
+    description: "Maximum simulation duration"
+    default: "2m"
+    env: "LEGION_DURATION"
+  
+  - name: "center_latitude"
+    type: "float"
+    description: "Center position latitude"
+    default: 40.044437
+    env: "LEGION_CENTER_LATITUDE"
+  
+  - name: "center_longitude"
+    type: "float"
+    description: "Center position longitude"
+    default: -76.306229
+    env: "LEGION_CENTER_LONGITUDE"
+  
+  - name: "center_altitude"
+    type: "float"
+    description: "Center position altitude (meters)"
+    default: 100
+    env: "LEGION_CENTER_ALTITUDE"
+  
+  - name: "log_level"
+    type: "string"
+    description: "Logging level"
+    options: ["debug", "info", "warn", "error"]
+    default: "info"
+    env: "LEGION_LOG_LEVEL"
+  
+  - name: "enable_aar"
+    type: "boolean"
+    description: "Generate After Action Report"
+    default: true
+    env: "LEGION_ENABLE_AAR"
+  
+  - name: "cleanup_existing"
+    type: "boolean"
+    description: "Clean up existing entities before starting"
+    default: true
+    env: "LEGION_CLEANUP_EXISTING"

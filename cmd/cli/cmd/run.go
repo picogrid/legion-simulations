@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/picogrid/legion-simulations/pkg/auth"
@@ -19,6 +20,7 @@ import (
 	"github.com/picogrid/legion-simulations/pkg/utils"
 
 	// Import simulations to register them
+	_ "github.com/picogrid/legion-simulations/cmd/drone-swarm/simulation"
 	_ "github.com/picogrid/legion-simulations/cmd/simple"
 )
 
@@ -71,6 +73,12 @@ func runSimulation(cmd *cobra.Command, _ []string) error {
 	}
 	logger.Success("Successfully connected to Legion")
 
+	// Get organizations and let user select
+	orgID, err := selectOrganization(legionClient)
+	if err != nil {
+		return fmt.Errorf("failed to select organization: %w", err)
+	}
+
 	simName, err := selectSimulation(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to select simulation: %w", err)
@@ -98,10 +106,21 @@ func runSimulation(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("simulation configuration not found for %s", simName)
 	}
 
-	params, err := utils.PromptForParameters(simConfig.Parameters)
+	// Filter out organization_id from parameters since we already have it
+	filteredParams := make([]simulation.Parameter, 0, len(simConfig.Parameters))
+	for _, param := range simConfig.Parameters {
+		if param.Name != "organization_id" {
+			filteredParams = append(filteredParams, param)
+		}
+	}
+
+	params, err := utils.PromptForParameters(filteredParams)
 	if err != nil {
 		return fmt.Errorf("failed to get parameters: %w", err)
 	}
+
+	// Add organization ID to parameters
+	params["organization_id"] = orgID
 
 	if err := sim.Configure(params); err != nil {
 		return fmt.Errorf("failed to configure simulation: %w", err)
@@ -283,4 +302,39 @@ func selectSimulation(cmd *cobra.Command) (string, error) {
 	}
 
 	return selected, nil
+}
+
+func selectOrganization(legionClient *client.Legion) (string, error) {
+	// Check if organization ID is provided via environment variable
+	if orgID := os.Getenv("LEGION_ORG_ID"); orgID != "" {
+		logger.Infof("Using organization ID from LEGION_ORG_ID: %s", orgID)
+		return orgID, nil
+	}
+
+	if orgID := os.Getenv("LEGION_ORGANIZATION_ID"); orgID != "" {
+		logger.Infof("Using organization ID from LEGION_ORGANIZATION_ID: %s", orgID)
+		return orgID, nil
+	}
+
+	// For now, we'll prompt for the organization ID
+	// In the future, we can enhance this to fetch the list of organizations
+	// when the Legion API client supports it properly
+
+	var orgID string
+	orgPrompt := &survey.Input{
+		Message: "Enter organization ID:",
+		Help:    "Enter your Legion organization ID (UUID format). You can find this in the Legion UI or set LEGION_ORG_ID environment variable.",
+	}
+
+	if err := survey.AskOne(orgPrompt, &orgID, survey.WithValidator(survey.Required)); err != nil {
+		return "", err
+	}
+
+	// Validate it's a valid UUID
+	if _, err := uuid.Parse(orgID); err != nil {
+		return "", fmt.Errorf("invalid organization ID format: %w", err)
+	}
+
+	logger.Infof("Using organization ID: %s", orgID)
+	return orgID, nil
 }
