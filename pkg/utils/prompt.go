@@ -237,7 +237,7 @@ func promptBoolean(param simulation.Parameter) (bool, error) {
 	return result, nil
 }
 
-func promptDuration(param simulation.Parameter) (string, error) {
+func promptDuration(param simulation.Parameter) (time.Duration, error) {
 	defaultStr := ""
 	if param.Default != nil {
 		defaultStr = fmt.Sprintf("%v", param.Default)
@@ -257,10 +257,15 @@ func promptDuration(param simulation.Parameter) (string, error) {
 		}
 		return nil
 	})); err != nil {
-		return "", err
+		return 0, err
 	}
 
-	return result, nil
+	duration, err := time.ParseDuration(result)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse duration: %w", err)
+	}
+
+	return duration, nil
 }
 
 // Helper functions

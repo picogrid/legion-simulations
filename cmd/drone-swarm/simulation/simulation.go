@@ -125,7 +125,7 @@ func (s *DroneSwarmSimulation) Configure(params map[string]interface{}) error {
 		NumCounterUASSystems: 10,
 		NumUASThreats:        50,
 		NumWaves:             5,
-		SimDuration:          2 * time.Minute,
+		SimDuration:          5 * time.Minute,
 		UpdateInterval:       1 * time.Second,
 		BaseLocation:         Location{Lat: 40.044437, Lon: -76.306229, Alt: 100},
 		SimulationRadius:     15.0, // km
