@@ -138,15 +138,27 @@ func (s *DroneSwarmSimulation) Configure(params map[string]interface{}) error {
 		s.config.OrganizationID = val
 	}
 
-	if val, ok := params["num_counter_uas_systems"].(float64); ok {
+	// Handle both int and float64 for num_counter_uas_systems
+	switch val := params["num_counter_uas_systems"].(type) {
+	case int:
+		s.config.NumCounterUASSystems = val
+	case float64:
 		s.config.NumCounterUASSystems = int(val)
 	}
 
-	if val, ok := params["num_uas_threats"].(float64); ok {
+	// Handle both int and float64 for num_uas_threats
+	switch val := params["num_uas_threats"].(type) {
+	case int:
+		s.config.NumUASThreats = val
+	case float64:
 		s.config.NumUASThreats = int(val)
 	}
 
-	if val, ok := params["waves"].(float64); ok {
+	// Handle both int and float64 for waves
+	switch val := params["waves"].(type) {
+	case int:
+		s.config.NumWaves = val
+	case float64:
 		s.config.NumWaves = int(val)
 	}
 
@@ -333,8 +345,21 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 
 	// Create UAS threats in waves (RED FORCE)
 	threatsPerWave := s.config.NumUASThreats / s.config.NumWaves
+	remainingThreats := s.config.NumUASThreats % s.config.NumWaves
+
+	logger.Infof("Creating %d UAS threats in %d waves (%d per wave, %d remainder)",
+		s.config.NumUASThreats, s.config.NumWaves, threatsPerWave, remainingThreats)
+
+	threatCount := 0
 	for wave := 0; wave < s.config.NumWaves; wave++ {
-		for i := 0; i < threatsPerWave; i++ {
+		// Add remainder threats to the last wave
+		threatsInThisWave := threatsPerWave
+		if wave == s.config.NumWaves-1 {
+			threatsInThisWave += remainingThreats
+		}
+
+		for i := 0; i < threatsInThisWave; i++ {
+			threatCount++
 			var trackNumber string
 			if s.config.UseUniqueNames {
 				trackNumber = generateUniqueTrackNumber()
@@ -381,6 +406,8 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 			logger.Infof("🔴 New air track detected: %s", trackNumber)
 		}
 	}
+
+	logger.Infof("Total threats created: %d (expected: %d)", threatCount, s.config.NumUASThreats)
 
 	logger.Infof("Successfully created %d Counter-UAS systems and %d UAS threats",
 		len(s.counterUASSystems), len(s.uasThreats))
