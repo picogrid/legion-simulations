@@ -2,9 +2,6 @@ package simulation
 
 import (
 	"fmt"
-)
-
-import (
 	"math"
 	"math/rand"
 	"sync"
@@ -13,6 +10,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/pkg/models"
 )
+
+func init() {
+	// Seed the random number generator to ensure varied simulation outcomes
+	rand.Seed(time.Now().UnixNano())
+}
 
 // Entity types - Blue Force (friendly) vs Red Force (enemy)
 const (

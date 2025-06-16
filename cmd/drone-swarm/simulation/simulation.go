@@ -741,20 +741,27 @@ func (s *DroneSwarmSimulation) executeDetection(_ context.Context) error {
 
 			// Log detection events and update threat classifications
 			for _, threat := range detectedThreats {
-				// Progressive classification based on behavior
+				// More aggressive classification based on proximity and behavior
+				distance := calculateDistanceKm(system.Position, threat.Position)
+
 				if threat.Classification == TrackStatusPending {
 					threat.UpdateClassification(TrackStatusUnknown)
-					logger.Infof("🔵 Track %s classification: UNKNOWN - New contact detected", threat.TrackNumber)
+					logger.Infof("🔵 Track %s classification: UNKNOWN - New contact detected at %.1fkm", threat.TrackNumber, distance)
 				} else if threat.Classification == TrackStatusUnknown {
-					// Analyze behavior to determine if suspected hostile
-					if threat.EstimatedSpeed > 100 || threat.ObservedBehavior == BehaviorAggressive {
+					// Within engagement range = definitely hostile
+					if distance <= system.EffectiveRange {
+						threat.UpdateClassification(TrackStatusHostile)
+						logger.Errorf("🔴 Track %s classification: HOSTILE - Within weapons range (%.1fkm)", threat.TrackNumber, distance)
+					} else if threat.EstimatedSpeed > 50 || threat.ObservedBehavior == BehaviorAggressive {
 						threat.UpdateClassification(TrackStatusSuspected)
-						logger.Warnf("🟡 Track %s classification: SUSPECTED - Exhibiting hostile behavior", threat.TrackNumber)
+						logger.Warnf("🟡 Track %s classification: SUSPECTED - Approaching at %.0f kph", threat.TrackNumber, threat.EstimatedSpeed)
 					}
-				} else if threat.Classification == TrackStatusSuspected && threat.TimesTargeted > 0 {
-					// If we've engaged it, it's definitely hostile
-					threat.UpdateClassification(TrackStatusHostile)
-					logger.Errorf("🔴 Track %s classification: HOSTILE - Confirmed enemy asset", threat.TrackNumber)
+				} else if threat.Classification == TrackStatusSuspected {
+					// Upgrade to hostile if getting closer or if engaged
+					if distance <= system.EffectiveRange*1.5 || threat.TimesTargeted > 0 {
+						threat.UpdateClassification(TrackStatusHostile)
+						logger.Errorf("🔴 Track %s classification: HOSTILE - Confirmed enemy asset", threat.TrackNumber)
+					}
 				}
 
 				// Update observable metadata
@@ -874,6 +881,39 @@ func (s *DroneSwarmSimulation) executeResolution(ctx context.Context) error {
 			system.UpdateStatus(CounterUASStatusOffline)
 			logger.Warnf("⚠️ %s (%s) ammunition depleted - system offline", system.Callsign, system.Name)
 		}
+
+		// Check if system is overwhelmed (too many threats in close proximity)
+		threatsInRange := 0
+		for _, threat := range s.uasThreats {
+			if threat.Classification == TrackStatusHostile || threat.Classification == TrackStatusSuspected {
+				distance := calculateDistanceKm(system.Position, threat.Position)
+				if distance <= system.EffectiveRange*1.2 {
+					threatsInRange++
+				}
+			}
+		}
+
+		// System becomes degraded if overwhelmed
+		if threatsInRange > 5 && system.Status != CounterUASStatusOffline {
+			system.mu.Lock()
+			system.SystemHealth = 0.5
+			if rand.Float64() < 0.1 { // 10% chance of going offline when overwhelmed
+				system.Status = CounterUASStatusOffline
+				logger.Errorf("💥 %s (%s) OVERWHELMED - system offline!", system.Callsign, system.Name)
+				s.stats.mu.Lock()
+				s.stats.CounterUASLosses++
+				s.stats.mu.Unlock()
+			} else if system.Status != CounterUASStatusDegraded {
+				system.Status = CounterUASStatusDegraded
+				logger.Warnf("⚠️ %s (%s) under heavy attack - system degraded", system.Callsign, system.Name)
+			}
+			system.mu.Unlock()
+		}
+
+		// Queue status updates for systems
+		s.updateBuffer.QueueStatusUpdate(system.ID, system.Status)
+		metadata, _ := json.Marshal(system.GetMetadata())
+		s.updateBuffer.QueueMetadataUpdate(system.ID, "metadata", json.RawMessage(metadata))
 	}
 
 	// Check for mission complete threats

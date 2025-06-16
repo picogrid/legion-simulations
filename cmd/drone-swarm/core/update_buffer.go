@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
@@ -228,18 +230,32 @@ func (ub *UpdateBuffer) sendUpdate(ctx context.Context, entityID uuid.UUID, upda
 		}
 	}
 
-	// Update status if changed
-	if update.Status != nil {
-		// TODO: Implement status update when API supports it
-		// For now, we'll include it in metadata
-		update.Metadata["status"] = *update.Status
-	}
+	// Update status and/or metadata if changed
+	if update.Status != nil || len(update.Metadata) > 0 {
+		req := &models.UpdateEntityRequest{
+			ID: entityID,
+		}
 
-	// Update metadata if changed
-	if len(update.Metadata) > 0 {
-		// TODO: Implement metadata update when API supports partial updates
-		// For now, log the metadata changes
-		logger.Debugf("Metadata updates for entity %s: %v", entityID, update.Metadata)
+		// Add status if changed
+		if update.Status != nil {
+			req.Status = update.Status
+		}
+
+		// Add metadata if changed
+		if len(update.Metadata) > 0 {
+			// Convert metadata to JSON
+			metadataJSON, err := json.Marshal(update.Metadata)
+			if err != nil {
+				return fmt.Errorf("failed to marshal metadata: %w", err)
+			}
+			rawMessage := json.RawMessage(metadataJSON)
+			req.Metadata = &rawMessage
+		}
+
+		orgCtx := client.WithOrgID(ctx, ub.orgID)
+		if _, err := ub.client.UpdateEntity(orgCtx, entityID.String(), req); err != nil {
+			return fmt.Errorf("failed to update entity: %w", err)
+		}
 	}
 
 	return nil
