@@ -127,7 +127,7 @@ func (s *DroneSwarmSimulation) Configure(params map[string]interface{}) error {
 		NumWaves:             5,
 		SimDuration:          2 * time.Minute,
 		UpdateInterval:       1 * time.Second,
-		BaseLocation:         Location{Lat: 37.7749, Lon: -122.4194, Alt: 100},
+		BaseLocation:         Location{Lat: 40.044437, Lon: -76.306229, Alt: 100},
 		SimulationRadius:     15.0, // km
 		EnableDebugLogging:   true,
 		CleanupExisting:      true,
@@ -429,8 +429,9 @@ func (s *DroneSwarmSimulation) deployEntities(ctx context.Context) error {
 		i++
 	}
 
-	// Deploy UAS threats at 8km radius with attack vectors
-	threatRadius := 8000.0 // 8km initial distance - closer for faster engagement
+	// Deploy UAS threats at 20km radius - outside detection range for gradual approach
+	// This allows for progressive classification: PENDING -> UNKNOWN -> SUSPECTED -> HOSTILE
+	threatRadius := 20000.0 // 20km initial distance - beyond detection range
 
 	for _, threat := range s.uasThreats {
 		// Random attack vector

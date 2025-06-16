@@ -64,13 +64,13 @@ parameters:
   - name: "center_latitude"
     type: "float"
     description: "Center position latitude"
-    default: 37.7749
+    default: 40.044437
     env: "LEGION_CENTER_LATITUDE"
   
   - name: "center_longitude"
     type: "float"
     description: "Center position longitude"
-    default: -122.4194
+    default: -76.306229
     env: "LEGION_CENTER_LONGITUDE"
   
   - name: "center_altitude"

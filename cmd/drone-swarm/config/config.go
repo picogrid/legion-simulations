@@ -351,8 +351,8 @@ func GetDefaultConfig() *SimulationConfig {
 			NumUASThreats:        20,
 			EngagementTypeMix:    0.7,
 			CenterLocation: Location{
-				Latitude:  37.7749,
-				Longitude: -122.4194,
+				Latitude:  40.044437,
+				Longitude: -76.306229,
 				Altitude:  100,
 			},
 		},

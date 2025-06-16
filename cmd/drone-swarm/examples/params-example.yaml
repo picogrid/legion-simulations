@@ -7,8 +7,8 @@ swarm_formation_type: "distributed"
 defense_placement_pattern: "ring"
 update_interval: "3s"
 duration: "5m"
-center_latitude: 37.7749
-center_longitude: -122.4194
+center_latitude: 40.044437
+center_longitude: -76.306229
 center_altitude: 100.0
 log_level: "info"
 enable_aar: true

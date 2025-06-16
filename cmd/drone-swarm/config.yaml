@@ -48,8 +48,8 @@ defaults:
   num_uas_threats: 20
   engagement_type_mix: 0.7  # 70% kinetic, 30% EW
   center_location:
-    latitude: 37.7749
-    longitude: -122.4194
+    latitude: 40.044437
+    longitude: -76.306229
     altitude: 100
   
 # Advanced options
