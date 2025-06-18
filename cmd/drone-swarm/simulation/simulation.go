@@ -60,6 +60,9 @@ type DroneSwarmSimulation struct {
 	counterUASSystems map[uuid.UUID]*CounterUASSystem
 	uasThreats        map[uuid.UUID]*UASThreat
 
+	// Feed tracking for health telemetry
+	systemHealthFeeds map[uuid.UUID]uuid.UUID // Maps system ID to feed definition ID
+
 	// Legion client
 	legionClient *client.Legion
 
@@ -69,6 +72,9 @@ type DroneSwarmSimulation struct {
 
 	// Statistics
 	stats SimulationStats
+
+	// Health tracking
+	lastReportedHealth map[uuid.UUID]float64
 }
 
 // SimulationConfig holds configuration parameters
@@ -97,12 +103,19 @@ type SimulationStats struct {
 	mu                    sync.RWMutex
 }
 
+// stringPtr returns a pointer to a string
+func stringPtr(s string) *string {
+	return &s
+}
+
 // NewDroneSwarmSimulation creates a new instance of the drone swarm simulation
 func NewDroneSwarmSimulation() simulation.Simulation {
 	return &DroneSwarmSimulation{
-		counterUASSystems: make(map[uuid.UUID]*CounterUASSystem),
-		uasThreats:        make(map[uuid.UUID]*UASThreat),
-		stopChan:          make(chan struct{}),
+		counterUASSystems:  make(map[uuid.UUID]*CounterUASSystem),
+		uasThreats:         make(map[uuid.UUID]*UASThreat),
+		stopChan:           make(chan struct{}),
+		lastReportedHealth: make(map[uuid.UUID]float64),
+		systemHealthFeeds:  make(map[uuid.UUID]uuid.UUID),
 	}
 }
 
@@ -339,6 +352,16 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 		delete(s.counterUASSystems, system.ID) // Remove old entry
 		system.ID = createdEntity.ID
 		s.counterUASSystems[system.ID] = system // Add with new ID
+
+		// Create health telemetry feed for this Counter-UAS system
+		feedID, err := s.createHealthTelemetryFeed(ctx, system.ID, system.Name)
+		if err != nil {
+			logger.Warnf("Failed to create health telemetry feed for %s: %v", system.Name, err)
+			// Continue without feed - fallback to metadata updates
+		} else {
+			s.systemHealthFeeds[system.ID] = feedID
+			logger.Infof("📊 Created health telemetry feed for %s", system.Name)
+		}
 
 		logger.Infof("🛡️ Deployed %s (%s) - %s system online", system.Name, system.Callsign, engagementType)
 	}
@@ -586,6 +609,9 @@ func (s *DroneSwarmSimulation) executeSimulationPhases(ctx context.Context) erro
 	if err := s.executeResolution(ctx); err != nil {
 		return fmt.Errorf("resolution phase failed: %w", err)
 	}
+
+	// Phase 6: Health Telemetry
+	s.updateSystemHealthTelemetry()
 
 	return nil
 }
@@ -925,6 +951,11 @@ func (s *DroneSwarmSimulation) executeResolution(ctx context.Context) error {
 		if threatsInRange > 5 && system.Status != CounterUASStatusOffline {
 			system.mu.Lock()
 			system.SystemHealth = 0.5
+			// Increase stress when overwhelmed
+			system.EngagementStress = math.Min(1.0, system.EngagementStress+0.3)
+			// Temperature spikes when overwhelmed
+			system.Temperature = math.Min(85.0, system.Temperature+10.0)
+
 			if rand.Float64() < 0.1 { // 10% chance of going offline when overwhelmed
 				system.Status = CounterUASStatusOffline
 				logger.Errorf("💥 %s (%s) OVERWHELMED - system offline!", system.Callsign, system.Name)
@@ -935,7 +966,14 @@ func (s *DroneSwarmSimulation) executeResolution(ctx context.Context) error {
 				system.Status = CounterUASStatusDegraded
 				logger.Warnf("⚠️ %s (%s) under heavy attack - system degraded", system.Callsign, system.Name)
 			}
+
 			system.mu.Unlock()
+
+			// Send immediate health telemetry when overwhelmed
+			ctx := context.Background()
+			if err := s.sendHealthTelemetryViaFeed(ctx, system); err != nil {
+				logger.Errorf("Failed to send critical health telemetry for %s: %v", system.Callsign, err)
+			}
 		}
 
 		// Queue status updates for systems
@@ -1448,6 +1486,202 @@ func (s *DroneSwarmSimulation) cleanupExistingEntities(ctx context.Context) erro
 	}
 
 	return nil
+}
+
+// createHealthTelemetryFeed creates a feed definition for Counter-UAS health telemetry
+func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, systemID uuid.UUID, systemName string) (uuid.UUID, error) {
+	// Create feed definition request
+	feedReq := &models.CreateFeedDefinitionRequest{
+		Category:    models.FEED_CATEGORY_MESSAGE,
+		FeedName:    "cuas_health_telemetry",
+		EntityID:    systemID,
+		DataType:    "application/json",
+		Description: fmt.Sprintf("Health telemetry data for Counter-UAS system %s", systemName),
+		IsActive:    true,
+		IsTemplate:  false,
+	}
+
+	// Create context with organization ID
+	orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
+
+	// First check if feed already exists
+	searchReq := &models.SearchFeedDefinitionsRequest{
+		Filters: &models.FeedDefinitionFilters{
+			EntityID: &systemID,
+			FeedName: stringPtr("cuas_health_telemetry"),
+		},
+	}
+
+	searchResult, err := s.legionClient.SearchFeedDefinitions(orgCtx, searchReq)
+	if err == nil && searchResult != nil && len(searchResult.Results) > 0 {
+		// Feed already exists, return its ID
+		return searchResult.Results[0].ID, nil
+	}
+
+	// Create new feed
+	createdFeed, err := s.legionClient.CreateFeedDefinition(orgCtx, feedReq)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to create feed definition: %w", err)
+	}
+
+	return createdFeed.ID, nil
+}
+
+// sendHealthTelemetryViaFeed sends health telemetry data through the feed
+func (s *DroneSwarmSimulation) sendHealthTelemetryViaFeed(ctx context.Context, system *CounterUASSystem) error {
+	feedID, exists := s.systemHealthFeeds[system.ID]
+	if !exists {
+		// No feed configured, skip
+		return nil
+	}
+
+	// Prepare telemetry data
+	telemetryData := map[string]interface{}{
+		"timestamp":              time.Now().Format(time.RFC3339),
+		"system_health":          system.SystemHealth,
+		"power_level":            system.PowerLevel,
+		"temperature_celsius":    system.Temperature,
+		"engagement_stress":      system.EngagementStress,
+		"status":                 system.Status,
+		"ammo_remaining":         system.AmmoRemaining,
+		"total_engagements":      system.TotalEngagements,
+		"successful_engagements": system.SuccessfulEngagements,
+		"datalink_status":        system.DataLinkStatus,
+		"warnings":               []string{},
+	}
+
+	// Add warnings based on conditions
+	warnings := []string{}
+	if system.PowerLevel < 0.2 {
+		warnings = append(warnings, "Low power")
+	}
+	if system.Temperature > 75.0 {
+		warnings = append(warnings, "High temperature")
+	}
+	if system.EngagementStress > 0.8 {
+		warnings = append(warnings, "High stress")
+	}
+	if system.EngagementType == EngagementTypeKinetic && system.AmmoRemaining < 5 {
+		warnings = append(warnings, "Low ammunition")
+	}
+	telemetryData["warnings"] = warnings
+
+	// Marshal the payload
+	payload, err := json.Marshal(telemetryData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal telemetry data: %w", err)
+	}
+
+	// Create service ingest message
+	payloadRaw := json.RawMessage(payload)
+	messageReq := &models.ServiceIngestMessageRequest{
+		EntityID:         system.ID,
+		FeedDefinitionID: feedID,
+		RecordedAt:       time.Now(),
+		Payload:          &payloadRaw,
+	}
+
+	// Send the message
+	orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
+	err = s.legionClient.IngestServiceMessage(orgCtx, messageReq)
+	if err != nil {
+		return fmt.Errorf("failed to send health telemetry: %w", err)
+	}
+
+	return nil
+}
+
+// updateSystemHealthTelemetry updates health metrics for Counter-UAS systems
+func (s *DroneSwarmSimulation) updateSystemHealthTelemetry() {
+	for _, system := range s.counterUASSystems {
+		system.mu.Lock()
+
+		// Update temperature based on activity
+		if system.Status == CounterUASStatusEngaging {
+			// Temperature increases during engagement
+			system.Temperature += 0.5 + rand.Float64()*0.5
+			if system.Temperature > 85.0 {
+				system.Temperature = 85.0 // Max operating temp
+			}
+		} else if system.Status == CounterUASStatusIdle {
+			// Temperature decreases when idle
+			system.Temperature -= 0.2
+			if system.Temperature < 20.0 {
+				system.Temperature = 20.0 // Ambient temp
+			}
+		}
+
+		// Update power level - gradual drain
+		if system.Status != CounterUASStatusOffline {
+			powerDrain := 0.001 // Base drain
+			if system.Status == CounterUASStatusEngaging {
+				powerDrain = 0.005 // Higher drain during engagement
+			} else if system.Status == CounterUASStatusTracking {
+				powerDrain = 0.002 // Medium drain during tracking
+			}
+
+			system.PowerLevel -= powerDrain
+			if system.PowerLevel < 0.1 {
+				system.PowerLevel = 0.1
+				system.Status = CounterUASStatusDegraded
+				logger.Warnf("⚠️ %s (%s) low power - system degraded", system.Callsign, system.Name)
+			}
+		}
+
+		// Update engagement stress
+		if system.Status == CounterUASStatusEngaging {
+			system.EngagementStress = math.Min(1.0, system.EngagementStress+0.1)
+		} else {
+			// Stress decreases over time
+			system.EngagementStress = math.Max(0.0, system.EngagementStress-0.02)
+		}
+
+		// System health affected by multiple factors
+		healthFactors := []float64{
+			system.PowerLevel,
+			1.0 - (system.Temperature-25.0)/60.0, // Normalize temp (25-85°C range)
+			1.0 - system.EngagementStress,
+		}
+
+		// Calculate average health
+		totalHealth := 0.0
+		for _, factor := range healthFactors {
+			totalHealth += factor
+		}
+		system.SystemHealth = totalHealth / float64(len(healthFactors))
+
+		// Check if we need to send health update (every 5 seconds or on significant change)
+		shouldUpdate := false
+		timeSinceUpdate := time.Since(system.LastHealthUpdate)
+
+		if timeSinceUpdate > 5*time.Second {
+			shouldUpdate = true
+		} else if math.Abs(system.SystemHealth-s.lastReportedHealth[system.ID]) > 0.1 {
+			// Significant health change
+			shouldUpdate = true
+		}
+
+		if shouldUpdate {
+			system.LastHealthUpdate = time.Now()
+			s.lastReportedHealth[system.ID] = system.SystemHealth
+			system.mu.Unlock() // Unlock before sending to avoid holding lock during network I/O
+
+			// Send health telemetry via feed
+			ctx := context.Background() // Use background context for async telemetry
+			if err := s.sendHealthTelemetryViaFeed(ctx, system); err != nil {
+				logger.Errorf("Failed to send health telemetry for %s: %v", system.Callsign, err)
+			} else {
+				logger.Debugf("📡 %s health telemetry sent: Health=%.1f%%, Power=%.1f%%, Temp=%.1f°C, Stress=%.1f",
+					system.Callsign,
+					system.SystemHealth*100,
+					system.PowerLevel*100,
+					system.Temperature,
+					system.EngagementStress*100)
+			}
+		} else {
+			system.mu.Unlock()
+		}
+	}
 }
 
 // init registers the simulation

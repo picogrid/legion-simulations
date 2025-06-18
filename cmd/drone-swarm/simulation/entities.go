@@ -95,8 +95,11 @@ type CounterUASSystem struct {
 	CooldownRemaining int
 
 	// Operational Data
-	SystemHealth          float64 // 0.0 to 1.0
-	PowerLevel            float64 // Battery/generator percentage
+	SystemHealth          float64   // 0.0 to 1.0
+	PowerLevel            float64   // Battery/generator percentage
+	Temperature           float64   // System temperature in Celsius
+	EngagementStress      float64   // 0.0 to 1.0 - stress from continuous engagements
+	LastHealthUpdate      time.Time // Track when we last sent health telemetry
 	TotalEngagements      int
 	SuccessfulEngagements int
 	CurrentTargets        []uuid.UUID // Can track multiple
@@ -215,8 +218,11 @@ func NewCounterUASSystem(name string, position *models.GeomPoint, engagementType
 		CooldownRemaining: 0,
 
 		// System status
-		SystemHealth:          1.0, // 100% healthy
-		PowerLevel:            1.0, // 100% power
+		SystemHealth:          1.0,  // 100% healthy
+		PowerLevel:            1.0,  // 100% power
+		Temperature:           25.0, // Normal operating temp (Celsius)
+		EngagementStress:      0.0,  // No stress initially
+		LastHealthUpdate:      time.Now(),
 		TotalEngagements:      0,
 		SuccessfulEngagements: 0,
 		CurrentTargets:        make([]uuid.UUID, 0),
@@ -352,9 +358,11 @@ func (c *CounterUASSystem) GetMetadata() map[string]interface{} {
 		"cooldown_remaining": c.CooldownRemaining,
 
 		// System Status
-		"system_health":   c.SystemHealth,
-		"power_level":     c.PowerLevel,
-		"datalink_status": c.DataLinkStatus,
+		"system_health":     c.SystemHealth,
+		"power_level":       c.PowerLevel,
+		"temperature":       c.Temperature,
+		"engagement_stress": c.EngagementStress,
+		"datalink_status":   c.DataLinkStatus,
 
 		// Combat Stats
 		"total_engagements":      c.TotalEngagements,
