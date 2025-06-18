@@ -12,8 +12,7 @@ import (
 )
 
 func init() {
-	// Seed the random number generator to ensure varied simulation outcomes
-	rand.Seed(time.Now().UnixNano())
+	// Note: As of Go 1.20, rand is auto-seeded
 }
 
 // Entity types - Blue Force (friendly) vs Red Force (enemy)
@@ -249,16 +248,17 @@ func NewUASThreat(trackNumber string, position *models.GeomPoint, waveNumber int
 	var sizeClass string
 	var radarCrossSection float64
 
-	if sizeRoll < 0.4 {
+	switch {
+	case sizeRoll < 0.4:
 		sizeClass = UASSizeGroup1
 		radarCrossSection = 0.01 + rand.Float64()*0.04 // 0.01-0.05 m²
-	} else if sizeRoll < 0.7 {
+	case sizeRoll < 0.7:
 		sizeClass = UASSizeGroup2
 		radarCrossSection = 0.05 + rand.Float64()*0.15 // 0.05-0.2 m²
-	} else if sizeRoll < 0.9 {
+	case sizeRoll < 0.9:
 		sizeClass = UASSizeGroup3
 		radarCrossSection = 0.2 + rand.Float64()*0.3 // 0.2-0.5 m²
-	} else {
+	default:
 		sizeClass = UASSizeGroup4
 		radarCrossSection = 0.5 + rand.Float64()*0.5 // 0.5-1.0 m²
 	}
