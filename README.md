@@ -2,6 +2,20 @@
 
 A Go-based simulation framework for demonstrating Legion C2 system capabilities through various scenarios including drone swarms, weather events, satellite operations, and more.
 
+## Quick and Easy Start
+
+```bash
+# Clone and build
+git clone https://github.com/picogrid/legion-simulations.git
+cd legion-simulations
+make build
+
+# Run the most exciting simulation - Drone Swarm Combat!
+./bin/legion-sim run -s "Drone Swarm Combat"
+```
+
+That's it! The CLI will guide you through environment setup and authentication.
+
 ## Overview
 
 Legion Simulations provides a flexible, extensible framework for creating simulations that showcase Legion's command and control capabilities for unmanned systems, data aggregation, and common operating picture generation. The framework is designed to be configuration-driven, making it easy to create new simulations and scenarios.
@@ -50,15 +64,40 @@ make build
 ./bin/legion-sim env add
 
 # You'll be prompted for:
-# - Environment name
-# - Legion API URL
+# - Environment name (e.g., "dev", "staging", "prod")
+# - Legion API URL (e.g., https://legion-staging.com)
 # - Authentication method (OAuth or API Key)
 
 # List configured environments
 ./bin/legion-sim env list
+
+# Remove an environment
+./bin/legion-sim env remove
 ```
 
+#### Managing Multiple Environments
+
+You can easily switch between different Legion environments:
+
+1. **Interactive Selection**: When running simulations, you'll be prompted to choose from your configured environments
+2. **Environment Variables**: Skip the prompt by setting:
+   ```bash
+   export LEGION_URL=https://legion-staging.com
+   export LEGION_API_KEY=your-staging-key
+   ```
+3. **Direct Edit**: Modify `~/.legion/config.yaml` directly
+
 #### Authentication Options
+
+Legion Simulations supports multiple authentication methods:
+
+| Authentication Type | Status | Description |
+|-------------------|--------|-------------|
+| User Auth (OAuth) | ✅ | Interactive login with email/password |
+| API Tokens | 🚧 TBD | Direct API token authentication |
+| Integration Auth | 🚧 TBD | OAuth client credentials flow for integrations |
+
+**Currently Supported:**
 
 1. **OAuth (Interactive Login)** - Recommended for user accounts
    - Prompts for email and password when running simulations
@@ -536,10 +575,3 @@ Environment variable precedence:
 ## License
 
 [License information here]
-
-## Support
-
-For issues and questions:
-- Check the [CLAUDE.md](CLAUDE.md) file for detailed technical documentation
-- Review existing simulations for examples
-- [Contact information here]
