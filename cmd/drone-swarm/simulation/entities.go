@@ -12,8 +12,7 @@ import (
 )
 
 func init() {
-	// Seed the random number generator to ensure varied simulation outcomes
-	rand.Seed(time.Now().UnixNano())
+	// Note: As of Go 1.20, rand is auto-seeded
 }
 
 // Entity types - Blue Force (friendly) vs Red Force (enemy)
@@ -95,8 +94,11 @@ type CounterUASSystem struct {
 	CooldownRemaining int
 
 	// Operational Data
-	SystemHealth          float64 // 0.0 to 1.0
-	PowerLevel            float64 // Battery/generator percentage
+	SystemHealth          float64   // 0.0 to 1.0
+	PowerLevel            float64   // Battery/generator percentage
+	Temperature           float64   // System temperature in Celsius
+	EngagementStress      float64   // 0.0 to 1.0 - stress from continuous engagements
+	LastHealthUpdate      time.Time // Track when we last sent health telemetry
 	TotalEngagements      int
 	SuccessfulEngagements int
 	CurrentTargets        []uuid.UUID // Can track multiple
@@ -215,8 +217,11 @@ func NewCounterUASSystem(name string, position *models.GeomPoint, engagementType
 		CooldownRemaining: 0,
 
 		// System status
-		SystemHealth:          1.0, // 100% healthy
-		PowerLevel:            1.0, // 100% power
+		SystemHealth:          1.0,  // 100% healthy
+		PowerLevel:            1.0,  // 100% power
+		Temperature:           25.0, // Normal operating temp (Celsius)
+		EngagementStress:      0.0,  // No stress initially
+		LastHealthUpdate:      time.Now(),
 		TotalEngagements:      0,
 		SuccessfulEngagements: 0,
 		CurrentTargets:        make([]uuid.UUID, 0),
@@ -243,16 +248,17 @@ func NewUASThreat(trackNumber string, position *models.GeomPoint, waveNumber int
 	var sizeClass string
 	var radarCrossSection float64
 
-	if sizeRoll < 0.4 {
+	switch {
+	case sizeRoll < 0.4:
 		sizeClass = UASSizeGroup1
 		radarCrossSection = 0.01 + rand.Float64()*0.04 // 0.01-0.05 m²
-	} else if sizeRoll < 0.7 {
+	case sizeRoll < 0.7:
 		sizeClass = UASSizeGroup2
 		radarCrossSection = 0.05 + rand.Float64()*0.15 // 0.05-0.2 m²
-	} else if sizeRoll < 0.9 {
+	case sizeRoll < 0.9:
 		sizeClass = UASSizeGroup3
 		radarCrossSection = 0.2 + rand.Float64()*0.3 // 0.2-0.5 m²
-	} else {
+	default:
 		sizeClass = UASSizeGroup4
 		radarCrossSection = 0.5 + rand.Float64()*0.5 // 0.5-1.0 m²
 	}
@@ -352,9 +358,11 @@ func (c *CounterUASSystem) GetMetadata() map[string]interface{} {
 		"cooldown_remaining": c.CooldownRemaining,
 
 		// System Status
-		"system_health":   c.SystemHealth,
-		"power_level":     c.PowerLevel,
-		"datalink_status": c.DataLinkStatus,
+		"system_health":     c.SystemHealth,
+		"power_level":       c.PowerLevel,
+		"temperature":       c.Temperature,
+		"engagement_stress": c.EngagementStress,
+		"datalink_status":   c.DataLinkStatus,
 
 		// Combat Stats
 		"total_engagements":      c.TotalEngagements,
