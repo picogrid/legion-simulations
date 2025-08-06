@@ -173,7 +173,7 @@ func (ub *UpdateBuffer) Flush(ctx context.Context) error {
 
 	ub.mu.Unlock()
 
-	// Process updates
+	// Process updates with context awareness
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(updates))
 
@@ -181,25 +181,63 @@ func (ub *UpdateBuffer) Flush(ctx context.Context) error {
 	semaphore := make(chan struct{}, 10)
 
 	for entityID, update := range updates {
+		// Check context before starting new goroutine
+		select {
+		case <-ctx.Done():
+			// Context cancelled, re-queue all remaining updates
+			ub.mu.Lock()
+			for id, u := range updates {
+				ub.updates[id] = u
+			}
+			ub.mu.Unlock()
+			return ctx.Err()
+		default:
+		}
+
 		wg.Add(1)
 		go func(id uuid.UUID, u *EntityUpdate) {
 			defer wg.Done()
 
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			if err := ub.sendUpdate(ctx, id, u); err != nil {
-				errChan <- err
-
-				// Re-queue failed update
+			// Check context before acquiring semaphore
+			select {
+			case <-ctx.Done():
+				// Re-queue this update
 				ub.mu.Lock()
 				ub.updates[id] = u
 				ub.mu.Unlock()
+				return
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			}
+
+			if err := ub.sendUpdate(ctx, id, u); err != nil {
+				// Only re-queue if not cancelled
+				if ctx.Err() == nil {
+					errChan <- err
+					// Re-queue failed update
+					ub.mu.Lock()
+					ub.updates[id] = u
+					ub.mu.Unlock()
+				}
 			}
 		}(entityID, update)
 	}
 
-	wg.Wait()
+	// Wait with context awareness
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All updates completed
+	case <-ctx.Done():
+		// Context cancelled, stop waiting
+		return ctx.Err()
+	}
+
 	close(errChan)
 
 	// Collect errors
@@ -219,6 +257,13 @@ func (ub *UpdateBuffer) Flush(ctx context.Context) error {
 
 // sendUpdate sends a single update to Legion
 func (ub *UpdateBuffer) sendUpdate(ctx context.Context, entityID uuid.UUID, update *EntityUpdate) error {
+	// Check context before sending
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	// Update position if changed
 	if update.Position != nil {
 		req := &models.CreateEntityLocationRequest{
@@ -228,6 +273,10 @@ func (ub *UpdateBuffer) sendUpdate(ctx context.Context, entityID uuid.UUID, upda
 
 		orgCtx := client.WithOrgID(ctx, ub.orgID)
 		if _, err := ub.client.CreateEntityLocation(orgCtx, entityID.String(), req); err != nil {
+			// Check if error is due to context cancellation
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return err
 		}
 	}
@@ -256,6 +305,10 @@ func (ub *UpdateBuffer) sendUpdate(ctx context.Context, entityID uuid.UUID, upda
 
 		orgCtx := client.WithOrgID(ctx, ub.orgID)
 		if _, err := ub.client.UpdateEntity(orgCtx, entityID.String(), req); err != nil {
+			// Check if error is due to context cancellation
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("failed to update entity: %w", err)
 		}
 	}

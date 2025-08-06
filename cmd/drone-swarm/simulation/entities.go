@@ -200,7 +200,7 @@ func NewCounterUASSystem(name string, position *models.GeomPoint, engagementType
 		Name:        name,
 		Callsign:    callsign,
 		Status:      CounterUASStatusIdle,
-		Affiliation: models.AffiliationFRIENDLY, // Our systems are always FRIENDLY
+		Affiliation: models.AffiliationFRIEND, // Our systems are always FRIEND
 		Position:    position,
 		Heading:     rand.Float64() * 360,
 
@@ -242,7 +242,7 @@ func NewCounterUASSystem(name string, position *models.GeomPoint, engagementType
 // NewUASThreat creates a new RED FORCE threat (with limited observable data)
 func NewUASThreat(trackNumber string, position *models.GeomPoint, waveNumber int) *UASThreat {
 	// Hidden true characteristics (for simulation)
-	trueSpeed := 50.0 + rand.Float64()*150.0  // 50-200 kph
+	trueSpeed := 100.0 + rand.Float64()*200.0 // 100-300 kph - faster drones for better visibility
 	autonomyLevel := rand.Float64()           // 0.0-1.0
 	evasionCapability := rand.Float64() > 0.3 // 70% have evasion
 

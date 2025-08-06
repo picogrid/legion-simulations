@@ -48,23 +48,39 @@ definitions:
 
   Affiliation:
     type: string
-    description: Entity affiliation/allegiance classification
+    description: NATO Joint Military Symbology (MIL-STD-2525D/APP-6D) Affiliation Codes
     enum:
-      - FRIENDLY
-      - HOSTILE
-      - NEUTRAL
-      - UNKNOWN
       - PENDING
+      - UNKNOWN
       - ASSUMED_FRIEND
+      - FRIEND
+      - NEUTRAL
       - SUSPECT
+      - HOSTILE
+      - EXERCISE_PENDING
+      - EXERCISE_UNKNOWN
+      - EXERCISE_FRIEND
+      - EXERCISE_NEUTRAL
+      - EXERCISE_ASSUMED_FRIEND
+      - JOKER
+      - FAKER
+      - NONE_SPECIFIED
     x-enum-varnames:
-      - AFFILIATION_FRIENDLY
-      - AFFILIATION_HOSTILE
-      - AFFILIATION_NEUTRAL
-      - AFFILIATION_UNKNOWN
       - AFFILIATION_PENDING
+      - AFFILIATION_UNKNOWN
       - AFFILIATION_ASSUMED_FRIEND
+      - AFFILIATION_FRIEND
+      - AFFILIATION_NEUTRAL
       - AFFILIATION_SUSPECT
+      - AFFILIATION_HOSTILE
+      - AFFILIATION_EXERCISE_PENDING
+      - AFFILIATION_EXERCISE_UNKNOWN
+      - AFFILIATION_EXERCISE_FRIEND
+      - AFFILIATION_EXERCISE_NEUTRAL
+      - AFFILIATION_EXERCISE_ASSUMED_FRIEND
+      - AFFILIATION_JOKER
+      - AFFILIATION_FAKER
+      - AFFILIATION_NONE_SPECIFIED
 
   MessageCategory:
     type: string
@@ -105,6 +121,8 @@ definitions:
         type: string
         description: The current operational status of the entity
         example: "active"
+      affiliation:
+        $ref: '#/definitions/Affiliation'
       metadata:
         type: object
         description: Arbitrary metadata associated with the entity (JSON object)
@@ -134,6 +152,8 @@ definitions:
         type: string
         description: The new status for the entity
         example: "inactive"
+      affiliation:
+        $ref: '#/definitions/Affiliation'
       metadata:
         type: object
         description: New or updated metadata for the entity (JSON object). This will replace existing metadata
@@ -163,6 +183,8 @@ definitions:
       status:
         type: string
         description: The current status of the entity
+      affiliation:
+        $ref: '#/definitions/Affiliation'
       metadata:
         type: object
         description: Metadata associated with the entity

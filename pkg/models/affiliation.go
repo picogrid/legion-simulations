@@ -14,7 +14,7 @@ import (
 	"github.com/go-openapi/validate"
 )
 
-// Affiliation Entity affiliation/allegiance classification
+// Affiliation NATO Joint Military Symbology (MIL-STD-2525D/APP-6D) Affiliation Codes
 //
 // swagger:model Affiliation
 type Affiliation string
@@ -30,26 +30,50 @@ func (m Affiliation) Pointer() *Affiliation {
 
 const (
 
-	// AffiliationFRIENDLY captures enum value "FRIENDLY"
-	AffiliationFRIENDLY Affiliation = "FRIENDLY"
-
-	// AffiliationHOSTILE captures enum value "HOSTILE"
-	AffiliationHOSTILE Affiliation = "HOSTILE"
-
-	// AffiliationNEUTRAL captures enum value "NEUTRAL"
-	AffiliationNEUTRAL Affiliation = "NEUTRAL"
+	// AffiliationPENDING captures enum value "PENDING"
+	AffiliationPENDING Affiliation = "PENDING"
 
 	// AffiliationUNKNOWN captures enum value "UNKNOWN"
 	AffiliationUNKNOWN Affiliation = "UNKNOWN"
 
-	// AffiliationPENDING captures enum value "PENDING"
-	AffiliationPENDING Affiliation = "PENDING"
-
 	// AffiliationASSUMEDFRIEND captures enum value "ASSUMED_FRIEND"
 	AffiliationASSUMEDFRIEND Affiliation = "ASSUMED_FRIEND"
 
+	// AffiliationFRIEND captures enum value "FRIEND"
+	AffiliationFRIEND Affiliation = "FRIEND"
+
+	// AffiliationNEUTRAL captures enum value "NEUTRAL"
+	AffiliationNEUTRAL Affiliation = "NEUTRAL"
+
 	// AffiliationSUSPECT captures enum value "SUSPECT"
 	AffiliationSUSPECT Affiliation = "SUSPECT"
+
+	// AffiliationHOSTILE captures enum value "HOSTILE"
+	AffiliationHOSTILE Affiliation = "HOSTILE"
+
+	// AffiliationEXERCISEPENDING captures enum value "EXERCISE_PENDING"
+	AffiliationEXERCISEPENDING Affiliation = "EXERCISE_PENDING"
+
+	// AffiliationEXERCISEUNKNOWN captures enum value "EXERCISE_UNKNOWN"
+	AffiliationEXERCISEUNKNOWN Affiliation = "EXERCISE_UNKNOWN"
+
+	// AffiliationEXERCISEFRIEND captures enum value "EXERCISE_FRIEND"
+	AffiliationEXERCISEFRIEND Affiliation = "EXERCISE_FRIEND"
+
+	// AffiliationEXERCISENEUTRAL captures enum value "EXERCISE_NEUTRAL"
+	AffiliationEXERCISENEUTRAL Affiliation = "EXERCISE_NEUTRAL"
+
+	// AffiliationEXERCISEASSUMEDFRIEND captures enum value "EXERCISE_ASSUMED_FRIEND"
+	AffiliationEXERCISEASSUMEDFRIEND Affiliation = "EXERCISE_ASSUMED_FRIEND"
+
+	// AffiliationJOKER captures enum value "JOKER"
+	AffiliationJOKER Affiliation = "JOKER"
+
+	// AffiliationFAKER captures enum value "FAKER"
+	AffiliationFAKER Affiliation = "FAKER"
+
+	// AffiliationNONESPECIFIED captures enum value "NONE_SPECIFIED"
+	AffiliationNONESPECIFIED Affiliation = "NONE_SPECIFIED"
 )
 
 // for schema
@@ -57,7 +81,7 @@ var affiliationEnum []interface{}
 
 func init() {
 	var res []Affiliation
-	if err := json.Unmarshal([]byte(`["FRIENDLY","HOSTILE","NEUTRAL","UNKNOWN","PENDING","ASSUMED_FRIEND","SUSPECT"]`), &res); err != nil {
+	if err := json.Unmarshal([]byte(`["PENDING","UNKNOWN","ASSUMED_FRIEND","FRIEND","NEUTRAL","SUSPECT","HOSTILE","EXERCISE_PENDING","EXERCISE_UNKNOWN","EXERCISE_FRIEND","EXERCISE_NEUTRAL","EXERCISE_ASSUMED_FRIEND","JOKER","FAKER","NONE_SPECIFIED"]`), &res); err != nil {
 		panic(err)
 	}
 	for _, v := range res {

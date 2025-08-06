@@ -140,7 +140,7 @@ func (s *DroneSwarmSimulation) Configure(params map[string]interface{}) error {
 		NumUASThreats:        50,
 		NumWaves:             5,
 		SimDuration:          5 * time.Minute,
-		UpdateInterval:       1 * time.Second,
+		UpdateInterval:       500 * time.Millisecond, // Faster updates for smoother movement
 		BaseLocation:         Location{Lat: 40.044437, Lon: -76.306229, Alt: 100},
 		SimulationRadius:     15.0, // km
 		EnableDebugLogging:   true,
@@ -255,6 +255,10 @@ func (s *DroneSwarmSimulation) Run(ctx context.Context, legionClient *client.Leg
 		return fmt.Errorf("failed to deploy entities: %w", err)
 	}
 
+	// Start the update buffer with context
+	s.updateBuffer.Start(ctx)
+	defer s.updateBuffer.Stop()
+
 	// Start simulation loop
 	return s.runSimulationLoop(ctx)
 }
@@ -278,7 +282,7 @@ func (s *DroneSwarmSimulation) initialize(ctx context.Context) error {
 	// Initialize core systems
 	s.engagementCalculator = core.NewEngagementCalculator()
 	s.swarmBehavior = core.NewSwarmBehaviorEngine()
-	s.updateBuffer = core.NewUpdateBuffer(s.legionClient, s.config.OrganizationID, 100, 1*time.Second)
+	s.updateBuffer = core.NewUpdateBuffer(s.legionClient, s.config.OrganizationID, 50, 250*time.Millisecond)
 
 	// Initialize controllers
 	simConfig := &controllers.SimulationConfig{
@@ -343,12 +347,14 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 		orgID := strfmt.UUID(s.config.OrganizationID)
 		category := models.CategoryDEVICE
 		entityType := EntityTypeCounterUAS
+		affiliation := models.AffiliationFRIEND
 		entityReq := &models.CreateEntityRequest{
 			OrganizationID: &orgID,
 			Name:           &name,
 			Category:       &category,
 			Type:           &entityType,
 			Status:         &system.Status,
+			Affiliation:    affiliation,
 			Metadata:       metadataRaw,
 		}
 
@@ -434,6 +440,7 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 				Category:       &category,
 				Type:           &entityType,
 				Status:         &threat.Classification, // Use classification as status
+				Affiliation:    threat.Affiliation,     // Initially UNKNOWN, changes with classification
 				Metadata:       metadataRaw,
 			}
 
@@ -507,9 +514,9 @@ func (s *DroneSwarmSimulation) deployEntities(ctx context.Context) error {
 		i++
 	}
 
-	// Deploy UAS threats at 20km radius - outside detection range for gradual approach
+	// Deploy UAS threats at 5-8km radius - within visual range but outside immediate engagement
 	// This allows for progressive classification: PENDING -> UNKNOWN -> SUSPECTED -> HOSTILE
-	threatRadius := 20000.0 // 20km initial distance - beyond detection range
+	threatRadius := 5000.0 + rand.Float64()*3000.0 // 5-8km initial distance - variable per threat
 
 	for _, threat := range s.uasThreats {
 		// Random attack vector
@@ -573,6 +580,10 @@ func (s *DroneSwarmSimulation) runSimulationLoop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			logger.Info("Simulation cancelled by context")
+			// Flush any pending updates with timeout
+			flushCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			s.updateBuffer.Flush(flushCtx)
+			cancel()
 			return ctx.Err()
 
 		case <-s.stopChan:
@@ -589,6 +600,11 @@ func (s *DroneSwarmSimulation) runSimulationLoop(ctx context.Context) error {
 
 			// Execute simulation phases
 			if err := s.executeSimulationPhases(ctx); err != nil {
+				// Check if this is an early termination (not an actual error)
+				if strings.Contains(err.Error(), "simulation terminated:") {
+					simulationComplete = true
+					break
+				}
 				logger.Errorf("Error executing simulation phases: %v", err)
 			}
 
@@ -733,7 +749,7 @@ func (s *DroneSwarmSimulation) executeMovement(_ context.Context) error {
 				threat.ActualVelocity.Coordinates[1]*threat.ActualVelocity.Coordinates[1] +
 				threat.ActualVelocity.Coordinates[2]*threat.ActualVelocity.Coordinates[2])
 
-		if speed < 5.0 { // Less than 5 m/s is too slow for a drone
+		if speed < 10.0 { // Less than 10 m/s (36 kph) is too slow for our faster drones
 			logger.Warnf("Threat %s has very low speed: %.2f m/s, recalculating velocity", threat.TrackNumber, speed)
 
 			// Recalculate velocity towards base
@@ -792,6 +808,15 @@ func (s *DroneSwarmSimulation) executeMovement(_ context.Context) error {
 			}
 		}
 	}
+
+	// Flush position updates immediately for better map visibility
+	flushCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	if err := s.updateBuffer.Flush(flushCtx); err != nil {
+		if err != context.DeadlineExceeded && err != context.Canceled {
+			logger.Debugf("Failed to flush movement updates: %v", err)
+		}
+	}
+	cancel()
 
 	return nil
 }
@@ -922,27 +947,59 @@ func (s *DroneSwarmSimulation) executeEngagement(ctx context.Context) error {
 
 	logger.Debugf("Started %d engagement goroutines", engagementCount)
 
-	// Process results in a separate goroutine
-	resultsChan := make(chan bool)
+	// Process results in a separate goroutine with context awareness
+	resultsChan := make(chan bool, 1)
 	go func() {
-		for result := range engagementChan {
-			if result == nil {
-				logger.Error("Received nil engagement result")
-				continue
+		for {
+			select {
+			case result, ok := <-engagementChan:
+				if !ok {
+					resultsChan <- true
+					return
+				}
+				if result == nil {
+					logger.Error("Received nil engagement result")
+					continue
+				}
+				logger.Infof("📋 Processing engagement result: SystemID=%s, TargetID=%s, success=%v",
+					result.SystemID, result.TargetID, result.Success)
+				s.processEngagementResult(ctx, result)
+			case <-ctx.Done():
+				resultsChan <- false
+				return
 			}
-			logger.Infof("📋 Processing engagement result: SystemID=%s, TargetID=%s, success=%v",
-				result.SystemID, result.TargetID, result.Success)
-			s.processEngagementResult(ctx, result)
 		}
-		resultsChan <- true
 	}()
 
-	// Wait for all engagements to complete
-	wg.Wait()
-	close(engagementChan)
+	// Wait for all engagements to complete with context awareness
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	// Wait for all results to be processed
-	<-resultsChan
+	select {
+	case <-done:
+		close(engagementChan)
+	case <-ctx.Done():
+		// Context cancelled, stop waiting
+		close(engagementChan)
+		return ctx.Err()
+	}
+
+	// Wait for all results to be processed or context cancellation
+	select {
+	case <-resultsChan:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// Check termination conditions immediately after engagements
+	if s.checkTerminationConditions() {
+		logger.Info("Simulation ending after engagement phase")
+		// Return a special error to signal early termination
+		return fmt.Errorf("simulation terminated: %s", s.stats.SimulationOutcome)
+	}
 
 	return nil
 }
@@ -1051,9 +1108,14 @@ func (s *DroneSwarmSimulation) executeResolution(ctx context.Context) error {
 		}
 	}
 
-	// Flush any pending updates
-	if err := s.updateBuffer.Flush(ctx); err != nil {
-		logger.Errorf("Failed to flush updates: %v", err)
+	// Flush any pending updates with timeout to prevent hanging
+	flushCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := s.updateBuffer.Flush(flushCtx); err != nil {
+		// Don't block on flush errors during resolution
+		if err != context.DeadlineExceeded && err != context.Canceled {
+			logger.Errorf("Failed to flush updates: %v", err)
+		}
 	}
 
 	// Update statistics
@@ -1395,23 +1457,8 @@ func (s *DroneSwarmSimulation) checkTerminationConditions() bool {
 	s.stats.mu.RLock()
 	defer s.stats.mu.RUnlock()
 
-	// Success: All threats eliminated
+	// Count active units on both sides
 	activeThreats := len(s.getActiveThreats())
-	if activeThreats == 0 {
-		s.stats.SimulationOutcome = "SUCCESS - All threats eliminated"
-		logger.Info("Termination condition met: All threats eliminated")
-		return true
-	}
-
-	// Failure: Too many threats penetrated defenses
-	penetrationRate := float64(s.stats.UASPenetrated) / float64(s.config.NumUASThreats)
-	if penetrationRate > 0.5 {
-		s.stats.SimulationOutcome = "FAILURE - Defenses overwhelmed"
-		logger.Info("Termination condition met: Defenses overwhelmed")
-		return true
-	}
-
-	// Stalemate: All systems depleted but threats remain
 	activeSystems := 0
 	for _, system := range s.counterUASSystems {
 		if system.Status != CounterUASStatusOffline {
@@ -1419,12 +1466,29 @@ func (s *DroneSwarmSimulation) checkTerminationConditions() bool {
 		}
 	}
 
-	if activeSystems == 0 && activeThreats > 0 {
-		s.stats.SimulationOutcome = "FAILURE - All defensive systems offline"
-		logger.Error("Termination condition met: All defensive systems offline")
+	// Success: All threats eliminated
+	if activeThreats == 0 {
+		s.stats.SimulationOutcome = "SUCCESS - All threats eliminated"
+		logger.Info("🎉 Termination condition met: All threats eliminated - DEFENDERS WIN!")
 		return true
 	}
 
+	// Failure: All defensive systems destroyed
+	if activeSystems == 0 {
+		s.stats.SimulationOutcome = "FAILURE - All defensive systems destroyed"
+		logger.Error("💀 Termination condition met: All defensive systems destroyed - ATTACKERS WIN!")
+		return true
+	}
+
+	// Failure: Too many threats penetrated defenses (lowered threshold to 30%)
+	penetrationRate := float64(s.stats.UASPenetrated) / float64(s.config.NumUASThreats)
+	if penetrationRate > 0.3 {
+		s.stats.SimulationOutcome = fmt.Sprintf("FAILURE - %.0f%% of threats penetrated defenses", penetrationRate*100)
+		logger.Errorf("💥 Termination condition met: %.0f%% penetration rate - ATTACKERS WIN!", penetrationRate*100)
+		return true
+	}
+
+	// Continue simulation if both sides have active units
 	return false
 }
 
@@ -1449,11 +1513,21 @@ func (s *DroneSwarmSimulation) generateAAR() error {
 
 // Stop gracefully shuts down the simulation
 func (s *DroneSwarmSimulation) Stop() error {
-	close(s.stopChan)
+	// Signal stop
+	select {
+	case <-s.stopChan:
+		// Already closed
+	default:
+		close(s.stopChan)
+	}
 
-	// Cleanup
+	// Cleanup with timeout
 	if s.updateBuffer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Stop the update buffer's goroutine first
+		s.updateBuffer.Stop()
+
+		// Then flush any remaining updates with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		_ = s.updateBuffer.Flush(ctx)
 	}
@@ -1674,8 +1748,10 @@ func (s *DroneSwarmSimulation) sendHealthTelemetryViaFeed(ctx context.Context, s
 		return nil
 	}
 
-	// Validate that the feed still exists before attempting to send data
-	orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
+	// Validate that the feed still exists before attempting to send data with timeout
+	validateCtx, validateCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer validateCancel()
+	orgCtx := client.WithOrgID(validateCtx, s.config.OrganizationID)
 	feedDef, validateErr := s.legionClient.GetFeedDefinition(orgCtx, feedID.String())
 	if validateErr != nil {
 		// Feed doesn't exist or there's an error - try to recreate it
@@ -1752,7 +1828,10 @@ func (s *DroneSwarmSimulation) sendHealthTelemetryViaFeed(ctx context.Context, s
 
 	logger.Debugf("Ingesting telemetry - Entity ID: %s, Feed ID: %s", system.ID.String(), feedID.String())
 
-	// Send the message (reuse orgCtx from above)
+	// Send the message with timeout to prevent blocking
+	ingestCtx, ingestCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer ingestCancel()
+	orgCtx = client.WithOrgID(ingestCtx, s.config.OrganizationID)
 	err = s.legionClient.IngestFeedData(orgCtx, ingestReq)
 	if err != nil {
 		// If we get a 404, the feed might have been deleted or doesn't exist

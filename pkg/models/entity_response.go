@@ -19,6 +19,9 @@ import (
 // swagger:model EntityResponse
 type EntityResponse struct {
 
+	// affiliation
+	Affiliation Affiliation `json:"affiliation,omitempty"`
+
 	// category
 	Category Category `json:"category,omitempty"`
 
@@ -55,6 +58,10 @@ type EntityResponse struct {
 func (m *EntityResponse) Validate(formats strfmt.Registry) error {
 	var res []error
 
+	if err := m.validateAffiliation(formats); err != nil {
+		res = append(res, err)
+	}
+
 	if err := m.validateCategory(formats); err != nil {
 		res = append(res, err)
 	}
@@ -78,6 +85,23 @@ func (m *EntityResponse) Validate(formats strfmt.Registry) error {
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
 	}
+	return nil
+}
+
+func (m *EntityResponse) validateAffiliation(formats strfmt.Registry) error {
+	if swag.IsZero(m.Affiliation) { // not required
+		return nil
+	}
+
+	if err := m.Affiliation.Validate(formats); err != nil {
+		if ve, ok := err.(*errors.Validation); ok {
+			return ve.ValidateName("affiliation")
+		} else if ce, ok := err.(*errors.CompositeError); ok {
+			return ce.ValidateName("affiliation")
+		}
+		return err
+	}
+
 	return nil
 }
 
@@ -150,6 +174,10 @@ func (m *EntityResponse) validateUpdatedAt(formats strfmt.Registry) error {
 func (m *EntityResponse) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	var res []error
 
+	if err := m.contextValidateAffiliation(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
 	if err := m.contextValidateCategory(ctx, formats); err != nil {
 		res = append(res, err)
 	}
@@ -157,6 +185,24 @@ func (m *EntityResponse) ContextValidate(ctx context.Context, formats strfmt.Reg
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
 	}
+	return nil
+}
+
+func (m *EntityResponse) contextValidateAffiliation(ctx context.Context, formats strfmt.Registry) error {
+
+	if swag.IsZero(m.Affiliation) { // not required
+		return nil
+	}
+
+	if err := m.Affiliation.ContextValidate(ctx, formats); err != nil {
+		if ve, ok := err.(*errors.Validation); ok {
+			return ve.ValidateName("affiliation")
+		} else if ce, ok := err.(*errors.CompositeError); ok {
+			return ce.ValidateName("affiliation")
+		}
+		return err
+	}
+
 	return nil
 }
 
