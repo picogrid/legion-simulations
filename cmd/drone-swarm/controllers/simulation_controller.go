@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/core"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/reporting"
@@ -396,13 +397,14 @@ func (sc *SimulationController) createCounterUASSystems(ctx context.Context) err
 
 		// Calculate position based on placement pattern
 		var position *models.GeomPoint
+		pointType := "Point"
 		switch sc.config.DefensePlacement {
 		case "ring":
 			angle := float64(i) * (360.0 / float64(sc.config.NumCounterUASSystems)) * math.Pi / 180.0
 			offsetX := sc.config.TargetRadiusKm * 1000 * math.Cos(angle)
 			offsetY := sc.config.TargetRadiusKm * 1000 * math.Sin(angle)
 			position = &models.GeomPoint{
-				Type:        "Point",
+				Type:        &pointType,
 				Coordinates: []float64{centerX + offsetX, centerY + offsetY, centerZ},
 			}
 		case "cluster":
@@ -410,7 +412,7 @@ func (sc *SimulationController) createCounterUASSystems(ctx context.Context) err
 			angle := rand.Float64() * 2 * math.Pi
 			radius := rand.Float64() * sc.config.TargetRadiusKm * 1000
 			position = &models.GeomPoint{
-				Type:        "Point",
+				Type:        &pointType,
 				Coordinates: []float64{centerX + radius*math.Cos(angle), centerY + radius*math.Sin(angle), centerZ},
 			}
 		case "line":
@@ -418,12 +420,12 @@ func (sc *SimulationController) createCounterUASSystems(ctx context.Context) err
 			spacing := (sc.config.TargetRadiusKm * 2000) / float64(sc.config.NumCounterUASSystems-1)
 			offset := -sc.config.TargetRadiusKm*1000 + float64(i)*spacing
 			position = &models.GeomPoint{
-				Type:        "Point",
+				Type:        &pointType,
 				Coordinates: []float64{centerX + offset, centerY, centerZ},
 			}
 		default:
 			position = &models.GeomPoint{
-				Type:        "Point",
+				Type:        &pointType,
 				Coordinates: []float64{centerX, centerY, centerZ},
 			}
 		}
@@ -439,12 +441,16 @@ func (sc *SimulationController) createCounterUASSystems(ctx context.Context) err
 		}
 		metadataRaw := json.RawMessage(metadata)
 
+		orgIDStr := strfmt.UUID(sc.organizationID)
+		category := models.CategoryDEVICE
+		entityType := EntityTypeCounterUAS
+
 		entityReq := &models.CreateEntityRequest{
-			OrganizationID: uuid.MustParse(sc.organizationID),
-			Name:           system.Name,
-			Category:       models.CATEGORY_DEVICE,
-			Type:           EntityTypeCounterUAS,
-			Status:         system.Status,
+			OrganizationID: &orgIDStr,
+			Name:           &system.Name,
+			Category:       &category,
+			Type:           &entityType,
+			Status:         &system.Status,
 			Metadata:       &metadataRaw,
 		}
 
@@ -454,12 +460,17 @@ func (sc *SimulationController) createCounterUASSystems(ctx context.Context) err
 			return fmt.Errorf("failed to create Counter-UAS entity: %w", err)
 		}
 
-		system.ID = createdEntity.ID
+		systemID, err := uuid.Parse(string(createdEntity.ID))
+		if err != nil {
+			return fmt.Errorf("failed to parse entity ID: %w", err)
+		}
+		system.ID = systemID
 		sc.counterUASSystems[system.ID] = system
 
 		// Set initial location
 		locationReq := &models.CreateEntityLocationRequest{
 			Position: position,
+			Source:   "Drone-Swarm-Simulation",
 		}
 
 		if _, err := sc.legionClient.CreateEntityLocation(orgCtx, system.ID.String(), locationReq); err != nil {
@@ -502,8 +513,9 @@ func (sc *SimulationController) createUASThreats(ctx context.Context) error {
 			// Random spawn position outside spawn radius
 			angle := rand.Float64() * 2 * math.Pi
 			spawnDistance := sc.config.SpawnRadiusKm * 1000
+			pointTypeSpawn := "Point"
 			position := &models.GeomPoint{
-				Type: "Point",
+				Type: &pointTypeSpawn,
 				Coordinates: []float64{
 					centerX + spawnDistance*math.Cos(angle),
 					centerY + spawnDistance*math.Sin(angle),
@@ -522,12 +534,16 @@ func (sc *SimulationController) createUASThreats(ctx context.Context) error {
 			}
 			metadataRaw := json.RawMessage(metadata)
 
+			orgIDStr := strfmt.UUID(sc.organizationID)
+			category := models.CategoryUXV
+			entityType := EntityTypeUAS
+
 			entityReq := &models.CreateEntityRequest{
-				OrganizationID: uuid.MustParse(sc.organizationID),
-				Name:           threat.Name,
-				Category:       models.CATEGORY_UXV,
-				Type:           EntityTypeUAS,
-				Status:         threat.Status,
+				OrganizationID: &orgIDStr,
+				Name:           &threat.Name,
+				Category:       &category,
+				Type:           &entityType,
+				Status:         &threat.Status,
 				Metadata:       &metadataRaw,
 			}
 
@@ -537,12 +553,17 @@ func (sc *SimulationController) createUASThreats(ctx context.Context) error {
 				return fmt.Errorf("failed to create UAS entity: %w", err)
 			}
 
-			threat.ID = createdEntity.ID
+			threatID, err := uuid.Parse(string(createdEntity.ID))
+			if err != nil {
+				return fmt.Errorf("failed to parse entity ID: %w", err)
+			}
+			threat.ID = threatID
 			sc.uasThreats[threat.ID] = threat
 
 			// Set initial location
 			locationReq := &models.CreateEntityLocationRequest{
 				Position: position,
+				Source:   "Drone-Swarm-Simulation",
 			}
 
 			if _, err := sc.legionClient.CreateEntityLocation(orgCtx, threat.ID.String(), locationReq); err != nil {
@@ -791,8 +812,9 @@ func NewUASThreat(name string, position *models.GeomPoint, waveNumber int, forma
 	velocityMagnitude := speedKph / 3.6 // Convert to m/s
 	velocityAngleRad := attackVector * math.Pi / 180.0
 
+	pointTypeVel := "Point"
 	velocity := &models.GeomPoint{
-		Type: "Point",
+		Type: &pointTypeVel,
 		Coordinates: []float64{
 			velocityMagnitude * math.Cos(velocityAngleRad),
 			velocityMagnitude * math.Sin(velocityAngleRad),
@@ -1064,8 +1086,9 @@ func (sc *SimulationController) updateUASMovement(ctx context.Context) error {
 
 	// Get center location in ECEF
 	centerX, centerY, centerZ := latLonAltToECEF(sc.config.CenterLocation.Lat, sc.config.CenterLocation.Lon, sc.config.CenterLocation.Alt)
+	pointTypeCenter := "Point"
 	center := &models.GeomPoint{
-		Type:        "Point",
+		Type:        &pointTypeCenter,
 		Coordinates: []float64{centerX, centerY, centerZ},
 	}
 

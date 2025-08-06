@@ -136,3 +136,22 @@ func (c *Legion) IngestServiceMessage(ctx context.Context, req *models.ServiceIn
 
 	return nil
 }
+
+// IngestFeedData ingests feed data using the standard ingestion endpoint
+func (c *Legion) IngestFeedData(ctx context.Context, req *models.IngestFeedDataRequest) error {
+	// Log the request for debugging
+	logger.Debugf("Ingesting feed data - Entity: %s, FeedDef: %s", req.EntityID, req.FeedDefinitionID)
+
+	resp, err := c.doRequest(ctx, http.MethodPost, "/v3/feeds/data", req)
+	if err != nil {
+		return fmt.Errorf("failed to ingest feed data: %w", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Errorf("failed to close response body: %v", err)
+		}
+	}(resp.Body)
+
+	return nil
+}

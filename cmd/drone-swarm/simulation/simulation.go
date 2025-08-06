@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/controllers"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/core"
@@ -60,8 +61,8 @@ type DroneSwarmSimulation struct {
 	counterUASSystems map[uuid.UUID]*CounterUASSystem
 	uasThreats        map[uuid.UUID]*UASThreat
 
-	// Feed tracking for health telemetry (currently disabled due to 404 issues)
-	// systemHealthFeeds map[uuid.UUID]uuid.UUID // Maps system ID to feed definition ID
+	// Feed tracking for health telemetry
+	systemHealthFeeds map[uuid.UUID]uuid.UUID // Maps system ID to feed definition ID
 
 	// Legion client
 	legionClient *client.Legion
@@ -115,7 +116,7 @@ func NewDroneSwarmSimulation() simulation.Simulation {
 		uasThreats:         make(map[uuid.UUID]*UASThreat),
 		stopChan:           make(chan struct{}),
 		lastReportedHealth: make(map[uuid.UUID]float64),
-		// systemHealthFeeds:  make(map[uuid.UUID]uuid.UUID),
+		systemHealthFeeds:  make(map[uuid.UUID]uuid.UUID),
 	}
 }
 
@@ -218,6 +219,11 @@ func (s *DroneSwarmSimulation) Run(ctx context.Context, legionClient *client.Leg
 
 	// Clean up existing entities if requested
 	if s.config.CleanupExisting {
+		// Clean up orphaned feeds first to avoid conflicts
+		if err := s.cleanupOrphanedFeeds(ctx); err != nil {
+			logger.Warnf("Failed to cleanup orphaned feeds: %v", err)
+		}
+
 		if err := s.cleanupExistingEntities(ctx); err != nil {
 			logger.Warnf("Failed to cleanup existing entities: %v", err)
 			// Enable unique names as fallback
@@ -234,7 +240,7 @@ func (s *DroneSwarmSimulation) Run(ctx context.Context, legionClient *client.Leg
 			// Clear any partially created entities
 			s.counterUASSystems = make(map[uuid.UUID]*CounterUASSystem)
 			s.uasThreats = make(map[uuid.UUID]*UASThreat)
-			// s.systemHealthFeeds = make(map[uuid.UUID]uuid.UUID)
+			s.systemHealthFeeds = make(map[uuid.UUID]uuid.UUID)
 			// Retry with unique names
 			if err := s.createEntities(ctx); err != nil {
 				return fmt.Errorf("failed to create entities with unique names: %w", err)
@@ -317,8 +323,9 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 		if s.config.UseUniqueNames {
 			name = fmt.Sprintf("Counter-UAS-%02d-%d", i+1, time.Now().Unix())
 		}
+		pointType := "Point"
 		position := &models.GeomPoint{
-			Type:        "Point",
+			Type:        &pointType,
 			Coordinates: []float64{0, 0, 0}, // Will be set during deployment
 		}
 
@@ -333,13 +340,16 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 		metadataRaw := json.RawMessage(metadata)
 
 		// Create entity in Legion
+		orgID := strfmt.UUID(s.config.OrganizationID)
+		category := models.CategoryDEVICE
+		entityType := EntityTypeCounterUAS
 		entityReq := &models.CreateEntityRequest{
-			OrganizationID: uuid.MustParse(s.config.OrganizationID),
-			Name:           name,
-			Category:       models.CATEGORY_DEVICE,
-			Type:           EntityTypeCounterUAS,
-			Status:         system.Status,
-			Metadata:       &metadataRaw,
+			OrganizationID: &orgID,
+			Name:           &name,
+			Category:       &category,
+			Type:           &entityType,
+			Status:         &system.Status,
+			Metadata:       metadataRaw,
 		}
 
 		// Create context with organization ID
@@ -351,12 +361,26 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 
 		// Update the map with the new Legion ID
 		delete(s.counterUASSystems, system.ID) // Remove old entry
-		system.ID = createdEntity.ID
+		newID, err := uuid.Parse(string(createdEntity.ID))
+		if err != nil {
+			return fmt.Errorf("failed to parse entity ID: %w", err)
+		}
+		system.ID = newID
 		s.counterUASSystems[system.ID] = system // Add with new ID
 
-		// For now, skip feed creation due to 404 issues
-		// We'll use metadata updates for health telemetry instead
-		logger.Debugf("Using metadata updates for health telemetry for %s", system.Name)
+		// Create health telemetry feed for this Counter-UAS system
+		feedID, err := s.createHealthTelemetryFeed(ctx, system.ID, system.Name)
+		if err != nil {
+			logger.Warnf("Failed to create health telemetry feed for %s: %v", system.Name, err)
+			// Continue without feed - fallback to metadata updates
+		} else {
+			if feedID == uuid.Nil {
+				logger.Errorf("Invalid feed ID returned for system %s", system.Name)
+			} else {
+				s.systemHealthFeeds[system.ID] = feedID
+				logger.Infof("📊 Created health telemetry feed for %s (Feed ID: %s, System ID: %s)", system.Name, feedID.String(), system.ID.String())
+			}
+		}
 
 		logger.Infof("🛡️ Deployed %s (%s) - %s system online", system.Name, system.Callsign, engagementType)
 	}
@@ -384,8 +408,9 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 			} else {
 				trackNumber = generateTrackNumber()
 			}
+			pointType := "Point"
 			position := &models.GeomPoint{
-				Type:        "Point",
+				Type:        &pointType,
 				Coordinates: []float64{0, 0, 0}, // Will be set during deployment
 			}
 
@@ -400,13 +425,16 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 			metadataRaw := json.RawMessage(metadata)
 
 			// Create entity in Legion - using track classification
+			orgID := strfmt.UUID(s.config.OrganizationID)
+			category := models.CategoryUXV
+			entityType := EntityTypeUAS
 			entityReq := &models.CreateEntityRequest{
-				OrganizationID: uuid.MustParse(s.config.OrganizationID),
-				Name:           trackNumber, // Use track number as name
-				Category:       models.CATEGORY_UXV,
-				Type:           EntityTypeUAS,
-				Status:         threat.Classification, // Use classification as status
-				Metadata:       &metadataRaw,
+				OrganizationID: &orgID,
+				Name:           &trackNumber, // Use track number as name
+				Category:       &category,
+				Type:           &entityType,
+				Status:         &threat.Classification, // Use classification as status
+				Metadata:       metadataRaw,
 			}
 
 			// Create context with organization ID
@@ -418,7 +446,11 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 
 			// Update the map with the new Legion ID
 			delete(s.uasThreats, threat.ID) // Remove old entry
-			threat.ID = createdEntity.ID
+			newID, err := uuid.Parse(string(createdEntity.ID))
+			if err != nil {
+				return fmt.Errorf("failed to parse entity ID: %w", err)
+			}
+			threat.ID = newID
 			s.uasThreats[threat.ID] = threat // Add with new ID
 
 			logger.Infof("🔴 New air track detected: %s", trackNumber)
@@ -463,6 +495,7 @@ func (s *DroneSwarmSimulation) deployEntities(ctx context.Context) error {
 		// Update location in Legion
 		locationReq := &models.CreateEntityLocationRequest{
 			Position: system.Position,
+			Source:   "Drone-Swarm-Simulation",
 		}
 
 		orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
@@ -509,6 +542,7 @@ func (s *DroneSwarmSimulation) deployEntities(ctx context.Context) error {
 		// Update location in Legion
 		locationReq := &models.CreateEntityLocationRequest{
 			Position: threat.Position,
+			Source:   "Drone-Swarm-Simulation",
 		}
 
 		orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
@@ -966,10 +1000,14 @@ func (s *DroneSwarmSimulation) executeResolution(ctx context.Context) error {
 			system.mu.Unlock()
 
 			// Send immediate health telemetry when overwhelmed
-			// Update critical health metrics via metadata
-			s.updateBuffer.QueueMetadataUpdate(system.ID, "system_health", system.SystemHealth)
-			s.updateBuffer.QueueMetadataUpdate(system.ID, "status", CounterUASStatusDegraded)
-			s.updateBuffer.QueueMetadataUpdate(system.ID, "alert", "System overwhelmed")
+			ctx := context.Background()
+			if err := s.sendHealthTelemetryViaFeed(ctx, system); err != nil {
+				logger.Errorf("Failed to send critical health telemetry for %s: %v", system.Callsign, err)
+				// Fallback to metadata updates
+				s.updateBuffer.QueueMetadataUpdate(system.ID, "system_health", system.SystemHealth)
+				s.updateBuffer.QueueMetadataUpdate(system.ID, "status", CounterUASStatusDegraded)
+				s.updateBuffer.QueueMetadataUpdate(system.ID, "alert", "System overwhelmed")
+			}
 		}
 
 		// Queue status updates for systems
@@ -984,8 +1022,9 @@ func (s *DroneSwarmSimulation) executeResolution(ctx context.Context) error {
 		s.config.BaseLocation.Lon,
 		s.config.BaseLocation.Alt,
 	)
+	pointType := "Point"
 	basePos := &models.GeomPoint{
-		Type:        "Point",
+		Type:        &pointType,
 		Coordinates: []float64{baseX, baseY, baseZ},
 	}
 
@@ -1449,8 +1488,9 @@ func (s *DroneSwarmSimulation) cleanupExistingEntities(ctx context.Context) erro
 
 	// Search for each pattern separately to avoid overwhelming the API
 	for _, pattern := range patterns {
+		orgIDStr := strfmt.UUID(s.config.OrganizationID)
 		searchReq := &models.SearchEntitiesRequest{
-			OrganizationID: uuid.MustParse(s.config.OrganizationID),
+			OrganizationID: &orgIDStr,
 			Filters: &models.SearchFilters{
 				Name: pattern, // This will do a prefix match
 			},
@@ -1484,31 +1524,100 @@ func (s *DroneSwarmSimulation) cleanupExistingEntities(ctx context.Context) erro
 	return nil
 }
 
+// cleanupOrphanedFeeds removes feed definitions that match simulation entity naming patterns
+func (s *DroneSwarmSimulation) cleanupOrphanedFeeds(ctx context.Context) error {
+	logger.Info("Cleaning up orphaned feed definitions...")
+
+	// Create organization context
+	orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
+
+	// Feed name patterns to clean up (matching createHealthTelemetryFeed patterns)
+	feedPatterns := []string{
+		"cuas_health_telemetry_Counter-UAS-",
+		"cuas_health_telemetry_DEFENDER-",
+		"cuas_health_telemetry_GUARDIAN-",
+		"cuas_health_telemetry_HAWK-",
+		"cuas_health_telemetry_SENTRY-",
+	}
+
+	deletedFeedCount := 0
+
+	// Search for feeds with our naming patterns
+	category := models.MessageCategoryMESSAGE
+	searchReq := &models.FeedDefinitionSearchRequest{
+		Category: category,
+	}
+
+	logger.Debug("Searching for feed definitions to clean up...")
+	searchResult, err := s.legionClient.SearchFeedDefinitions(orgCtx, searchReq)
+	if err != nil {
+		logger.Warnf("Failed to search for feed definitions during cleanup: %v", err)
+		return nil // Continue with simulation even if cleanup fails
+	}
+
+	if searchResult != nil && len(searchResult.Results) > 0 {
+		for _, feed := range searchResult.Results {
+			// Check if this feed matches our naming patterns
+			shouldDelete := false
+			for _, pattern := range feedPatterns {
+				if strings.Contains(feed.FeedName, pattern) {
+					shouldDelete = true
+					break
+				}
+			}
+
+			if shouldDelete {
+				logger.Debugf("Deleting orphaned feed: %s (ID: %s)", feed.FeedName, feed.ID)
+				if err := s.legionClient.DeleteFeedDefinition(orgCtx, feed.ID.String()); err != nil {
+					logger.Warnf("Failed to delete feed %s (ID: %s): %v", feed.FeedName, feed.ID, err)
+				} else {
+					deletedFeedCount++
+					logger.Debugf("Successfully deleted feed: %s", feed.FeedName)
+				}
+			}
+		}
+	}
+
+	// Clear our internal feed tracking
+	s.systemHealthFeeds = make(map[uuid.UUID]uuid.UUID)
+
+	if deletedFeedCount > 0 {
+		logger.Infof("Cleaned up %d orphaned feed definitions", deletedFeedCount)
+	} else {
+		logger.Info("No orphaned feed definitions found to clean up")
+	}
+
+	return nil
+}
+
 // createHealthTelemetryFeed creates a feed definition for Counter-UAS health telemetry
-// TEMPORARILY DISABLED due to 404 issues with feed ingestion
-/*
 func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, systemID uuid.UUID, systemName string) (uuid.UUID, error) {
 	// Create feed definition request with unique name per entity
 	// Include entity ID in feed name to ensure global uniqueness
 	feedName := fmt.Sprintf("cuas_health_telemetry_%s_%s", systemName, systemID.String()[:8])
 	description := fmt.Sprintf("Health telemetry data for Counter-UAS system %s", systemName)
+	category := models.MessageCategoryMESSAGE
+	dataType := "application/json"
+	entityUUID := strfmt.UUID(systemID.String())
+	isActive := true
 	feedReq := &models.CreateFeedDefinitionRequest{
-		Category:    models.MESSAGE_DATA,
-		FeedName:    feedName,
-		EntityID:    &systemID,
-		DataType:    "application/json",
-		Description: &description,
-		IsActive:    true,
+		Category:    &category,
+		FeedName:    &feedName,
+		EntityID:    entityUUID,
+		DataType:    &dataType,
+		Description: description,
+		IsActive:    &isActive,
 	}
 
 	// Create context with organization ID
 	orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
 
 	// First check if feed already exists for this entity
-	category := models.MESSAGE_DATA
+	searchCategory := models.MessageCategoryMESSAGE
+	searchEntityID := strfmt.UUID(systemID.String())
 	searchReq := &models.FeedDefinitionSearchRequest{
-		EntityID: &systemID,
-		Category: &category,
+		EntityID: searchEntityID,
+		Category: searchCategory,
 	}
 
 	searchResult, err := s.legionClient.SearchFeedDefinitions(orgCtx, searchReq)
@@ -1517,13 +1626,15 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 		for _, feed := range searchResult.Results {
 			if strings.Contains(feed.FeedName, "cuas_health_telemetry") {
 				logger.Debugf("Using existing health telemetry feed for %s", systemName)
-				return feed.ID, nil
+				feedUUID, _ := uuid.Parse(string(feed.ID))
+				return feedUUID, nil
 			}
 		}
 	}
 
 	// Create new feed
 	logger.Debugf("Creating feed definition for system %s (ID: %s) with name: %s", systemName, systemID.String(), feedName)
+	logger.Debugf("Feed request - OrgID from context: %s, EntityID: %s, Category: %s", s.config.OrganizationID, systemID.String(), feedReq.Category)
 	createdFeed, err := s.legionClient.CreateFeedDefinition(orgCtx, feedReq)
 	if err != nil {
 		// If we get a 409, it might be from a previous run with the same name
@@ -1533,14 +1644,15 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 
 			// Search by feed name pattern
 			searchReq2 := &models.FeedDefinitionSearchRequest{
-				Category: &category,
+				Category: category,
 			}
 			searchResult2, err2 := s.legionClient.SearchFeedDefinitions(orgCtx, searchReq2)
 			if err2 == nil && searchResult2 != nil {
 				for _, feed := range searchResult2.Results {
-					if feed.FeedName == feedName && feed.EntityID != nil && *feed.EntityID == systemID {
+					if feed.FeedName == feedName && feed.EntityID != "" && string(feed.EntityID) == systemID.String() {
 						logger.Infof("Found existing feed with matching name and entity ID")
-						return feed.ID, nil
+						feedUUID, _ := uuid.Parse(string(feed.ID))
+						return feedUUID, nil
 					}
 				}
 			}
@@ -1548,19 +1660,43 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 		return uuid.Nil, fmt.Errorf("failed to create feed definition: %w", err)
 	}
 
-	logger.Debugf("Successfully created feed definition with ID: %s for system: %s", createdFeed.ID.String(), systemName)
-	return createdFeed.ID, nil
+	logger.Debugf("Successfully created feed definition with ID: %s for system: %s", string(createdFeed.ID), systemName)
+	feedUUID, _ := uuid.Parse(string(createdFeed.ID))
+	return feedUUID, nil
 }
-*/
 
 // sendHealthTelemetryViaFeed sends health telemetry data through the feed
-// TEMPORARILY DISABLED due to 404 issues with feed ingestion
-/*
 func (s *DroneSwarmSimulation) sendHealthTelemetryViaFeed(ctx context.Context, system *CounterUASSystem) error {
 	feedID, exists := s.systemHealthFeeds[system.ID]
 	if !exists {
 		// No feed configured, skip
 		logger.Debugf("No health telemetry feed found for system %s (ID: %s)", system.Name, system.ID.String())
+		return nil
+	}
+
+	// Validate that the feed still exists before attempting to send data
+	orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
+	feedDef, validateErr := s.legionClient.GetFeedDefinition(orgCtx, feedID.String())
+	if validateErr != nil {
+		// Feed doesn't exist or there's an error - try to recreate it
+		logger.Warnf("Feed validation failed for system %s (Feed ID: %s): %v. Attempting to recreate.",
+			system.Name, feedID.String(), validateErr)
+
+		// Remove the invalid feed from tracking
+		delete(s.systemHealthFeeds, system.ID)
+
+		// Try to recreate the feed
+		newFeedID, recreateErr := s.createHealthTelemetryFeed(ctx, system.ID, system.Name)
+		if recreateErr != nil {
+			logger.Errorf("Failed to recreate feed for system %s: %v", system.Name, recreateErr)
+			return fmt.Errorf("feed validation failed and recreation failed: %w", validateErr)
+		}
+
+		feedID = newFeedID
+		logger.Infof("Successfully recreated feed for system %s (new Feed ID: %s)", system.Name, newFeedID.String())
+	} else if feedDef == nil {
+		logger.Warnf("Feed definition is nil for system %s (Feed ID: %s). Skipping telemetry.",
+			system.Name, feedID.String())
 		return nil
 	}
 
@@ -1602,33 +1738,57 @@ func (s *DroneSwarmSimulation) sendHealthTelemetryViaFeed(ctx context.Context, s
 		return fmt.Errorf("failed to marshal telemetry data: %w", err)
 	}
 
-	// Create service ingest message
+	// Create feed data ingest request
 	payloadRaw := json.RawMessage(payload)
-	messageReq := &models.ServiceIngestMessageRequest{
-		EntityID:         system.ID,
-		FeedDefinitionID: feedID,
-		RecordedAt:       time.Now(),
+	entityIDStr := strfmt.UUID(system.ID.String())
+	feedIDStr := strfmt.UUID(feedID.String())
+	recordedAt := strfmt.DateTime(time.Now())
+	ingestReq := &models.IngestFeedDataRequest{
+		EntityID:         &entityIDStr,
+		FeedDefinitionID: &feedIDStr,
+		RecordedAt:       &recordedAt,
 		Payload:          &payloadRaw,
 	}
 
 	logger.Debugf("Ingesting telemetry - Entity ID: %s, Feed ID: %s", system.ID.String(), feedID.String())
 
-	// Send the message
-	orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
-	err = s.legionClient.IngestServiceMessage(orgCtx, messageReq)
+	// Send the message (reuse orgCtx from above)
+	err = s.legionClient.IngestFeedData(orgCtx, ingestReq)
 	if err != nil {
 		// If we get a 404, the feed might have been deleted or doesn't exist
 		if strings.Contains(err.Error(), "404") {
-			logger.Errorf("Feed definition not found (ID: %s) for system %s. Removing from tracking.", feedID.String(), system.Name)
-			// Remove the feed from our tracking so we don't keep trying
+			logger.Warnf("Feed definition not found (ID: %s) for system %s. Attempting to recreate feed.",
+				feedID.String(), system.Name)
+
+			// Remove the invalid feed from our tracking
 			delete(s.systemHealthFeeds, system.ID)
+
+			// Try to recreate the feed
+			newFeedID, recreateErr := s.createHealthTelemetryFeed(ctx, system.ID, system.Name)
+			if recreateErr != nil {
+				logger.Errorf("Failed to recreate feed for system %s: %v", system.Name, recreateErr)
+				return fmt.Errorf("failed to send health telemetry (feed recreation failed): %w", err)
+			}
+
+			logger.Infof("Successfully recreated feed for system %s (new Feed ID: %s)", system.Name, newFeedID.String())
+
+			// Update the request with the new feed ID and retry
+			newFeedIDStr := strfmt.UUID(newFeedID.String())
+			ingestReq.FeedDefinitionID = &newFeedIDStr
+			retryErr := s.legionClient.IngestFeedData(orgCtx, ingestReq)
+			if retryErr != nil {
+				logger.Errorf("Failed to send telemetry even after feed recreation for system %s: %v", system.Name, retryErr)
+				return fmt.Errorf("failed to send health telemetry (retry after recreation failed): %w", retryErr)
+			}
+
+			logger.Debugf("Successfully sent telemetry after feed recreation for system %s", system.Name)
+			return nil // Success after recreation
 		}
 		return fmt.Errorf("failed to send health telemetry: %w", err)
 	}
 
 	return nil
 }
-*/
 
 // updateSystemHealthTelemetry updates health metrics for Counter-UAS systems
 func (s *DroneSwarmSimulation) updateSystemHealthTelemetry() {
@@ -1707,15 +1867,17 @@ func (s *DroneSwarmSimulation) updateSystemHealthTelemetry() {
 			s.lastReportedHealth[system.ID] = system.SystemHealth
 			system.mu.Unlock() // Unlock before sending to avoid holding lock during network I/O
 
-			// Update health telemetry via metadata
-			s.updateBuffer.QueueMetadataUpdate(system.ID, "system_health", system.SystemHealth)
-			s.updateBuffer.QueueMetadataUpdate(system.ID, "power_level", system.PowerLevel)
-			s.updateBuffer.QueueMetadataUpdate(system.ID, "temperature", system.Temperature)
-			s.updateBuffer.QueueMetadataUpdate(system.ID, "engagement_stress", system.EngagementStress)
-
-			// Log health status changes
-			if system.PowerLevel < 0.2 || system.Temperature > 75.0 || system.EngagementStress > 0.8 {
-				logger.Warnf("⚠️ %s health warning: Health=%.1f%%, Power=%.1f%%, Temp=%.1f°C, Stress=%.1f%%",
+			// Send health telemetry via feed
+			ctx := context.Background() // Use background context for async telemetry
+			if err := s.sendHealthTelemetryViaFeed(ctx, system); err != nil {
+				logger.Errorf("Failed to send health telemetry for %s: %v", system.Callsign, err)
+				// Fallback to metadata updates
+				s.updateBuffer.QueueMetadataUpdate(system.ID, "system_health", system.SystemHealth)
+				s.updateBuffer.QueueMetadataUpdate(system.ID, "power_level", system.PowerLevel)
+				s.updateBuffer.QueueMetadataUpdate(system.ID, "temperature", system.Temperature)
+				s.updateBuffer.QueueMetadataUpdate(system.ID, "engagement_stress", system.EngagementStress)
+			} else {
+				logger.Debugf("📡 %s health telemetry sent: Health=%.1f%%, Power=%.1f%%, Temp=%.1f°C, Stress=%.1f",
 					system.Callsign,
 					system.SystemHealth*100,
 					system.PowerLevel*100,

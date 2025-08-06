@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/pkg/client"
 	"github.com/picogrid/legion-simulations/pkg/logger"
@@ -222,6 +223,7 @@ func (ub *UpdateBuffer) sendUpdate(ctx context.Context, entityID uuid.UUID, upda
 	if update.Position != nil {
 		req := &models.CreateEntityLocationRequest{
 			Position: update.Position,
+			Source:   "Drone-Swarm-Simulation",
 		}
 
 		orgCtx := client.WithOrgID(ctx, ub.orgID)
@@ -233,12 +235,12 @@ func (ub *UpdateBuffer) sendUpdate(ctx context.Context, entityID uuid.UUID, upda
 	// Update status and/or metadata if changed
 	if update.Status != nil || len(update.Metadata) > 0 {
 		req := &models.UpdateEntityRequest{
-			ID: entityID,
+			ID: strfmt.UUID(entityID.String()),
 		}
 
 		// Add status if changed
 		if update.Status != nil {
-			req.Status = update.Status
+			req.Status = *update.Status
 		}
 
 		// Add metadata if changed
