@@ -23,6 +23,11 @@ func DefaultAuthConfig() AuthConfig {
 	keycloakURL := os.Getenv("KEYCLOAK_URL")
 	if keycloakURL == "" {
 		keycloakURL = "https://auth.legion-staging.com"
+
+		// Check if we're using localhost and default to the correct port
+		if legionURL := os.Getenv("LEGION_URL"); strings.Contains(legionURL, "localhost") {
+			keycloakURL = "http://localhost:8443/auth"
+		}
 	}
 
 	return AuthConfig{

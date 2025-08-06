@@ -71,12 +71,13 @@ const (
 // CounterUASSystem represents a BLUE FORCE defensive Counter-UAS system
 // We have complete visibility and control of these systems
 type CounterUASSystem struct {
-	ID       uuid.UUID
-	Name     string
-	Callsign string // Military callsign
-	Status   string
-	Position *models.GeomPoint
-	Heading  float64 // Degrees
+	ID          uuid.UUID
+	Name        string
+	Callsign    string // Military callsign
+	Status      string
+	Affiliation models.Affiliation // Always FRIENDLY for our systems
+	Position    *models.GeomPoint
+	Heading     float64 // Degrees
 
 	// Sensor Capabilities
 	RadarRange        float64 // Detection range for radar
@@ -116,9 +117,10 @@ type CounterUASSystem struct {
 // UASThreat represents a RED FORCE enemy drone
 // We only know what we can observe/detect
 type UASThreat struct {
-	ID             uuid.UUID // Our tracking ID
-	TrackNumber    string    // Military track number (e.g., "TK-4521")
-	Classification string    // PENDING, UNKNOWN, SUSPECTED, HOSTILE
+	ID             uuid.UUID          // Our tracking ID
+	TrackNumber    string             // Military track number (e.g., "TK-4521")
+	Classification string             // PENDING, UNKNOWN, SUSPECTED, HOSTILE
+	Affiliation    models.Affiliation // Changes based on classification
 
 	// Observable Characteristics
 	Position     *models.GeomPoint // Last known position
@@ -194,12 +196,13 @@ func NewCounterUASSystem(name string, position *models.GeomPoint, engagementType
 	}
 
 	return &CounterUASSystem{
-		ID:       uuid.New(),
-		Name:     name,
-		Callsign: callsign,
-		Status:   CounterUASStatusIdle,
-		Position: position,
-		Heading:  rand.Float64() * 360,
+		ID:          uuid.New(),
+		Name:        name,
+		Callsign:    callsign,
+		Status:      CounterUASStatusIdle,
+		Affiliation: models.AffiliationFRIEND, // Our systems are always FRIEND
+		Position:    position,
+		Heading:     rand.Float64() * 360,
 
 		// Sensor suite
 		RadarRange:        12.0, // 12km radar detection
@@ -239,7 +242,7 @@ func NewCounterUASSystem(name string, position *models.GeomPoint, engagementType
 // NewUASThreat creates a new RED FORCE threat (with limited observable data)
 func NewUASThreat(trackNumber string, position *models.GeomPoint, waveNumber int) *UASThreat {
 	// Hidden true characteristics (for simulation)
-	trueSpeed := 50.0 + rand.Float64()*150.0  // 50-200 kph
+	trueSpeed := 100.0 + rand.Float64()*200.0 // 100-300 kph - faster drones for better visibility
 	autonomyLevel := rand.Float64()           // 0.0-1.0
 	evasionCapability := rand.Float64() > 0.3 // 70% have evasion
 
@@ -268,8 +271,9 @@ func NewUASThreat(trackNumber string, position *models.GeomPoint, waveNumber int
 	velocityMagnitude := trueSpeed / 3.6 // Convert to m/s
 	headingRad := heading * math.Pi / 180.0
 
+	pointType := "Point"
 	velocity := &models.GeomPoint{
-		Type: "Point",
+		Type: &pointType,
 		Coordinates: []float64{
 			velocityMagnitude * math.Cos(headingRad),
 			velocityMagnitude * math.Sin(headingRad),
@@ -289,6 +293,7 @@ func NewUASThreat(trackNumber string, position *models.GeomPoint, waveNumber int
 		ID:             uuid.New(),
 		TrackNumber:    trackNumber,
 		Classification: TrackStatusPending,
+		Affiliation:    models.AffiliationUNKNOWN, // Initially unknown until identified
 
 		// Initial observations
 		Position:     position,
@@ -342,8 +347,9 @@ func (c *CounterUASSystem) GetMetadata() map[string]interface{} {
 
 	metadata := map[string]interface{}{
 		// Identity
-		"callsign": c.Callsign,
-		"iff_code": c.IFFCode,
+		"callsign":    c.Callsign,
+		"iff_code":    c.IFFCode,
+		"affiliation": string(c.Affiliation),
 
 		// Sensors
 		"radar_range_km":        c.RadarRange,
@@ -397,6 +403,7 @@ func (u *UASThreat) GetMetadata() map[string]interface{} {
 		// Track Info
 		"track_number":   u.TrackNumber,
 		"classification": u.Classification,
+		"affiliation":    string(u.Affiliation),
 		"track_quality":  u.TrackQuality,
 		"last_seen":      u.LastSeenTime.Format(time.RFC3339),
 
@@ -449,6 +456,26 @@ func (u *UASThreat) UpdateClassification(newClass string) {
 	defer u.mu.Unlock()
 	u.Classification = newClass
 	u.LastUpdateTime = time.Now()
+
+	// Update affiliation based on classification
+	switch newClass {
+	case TrackStatusPending:
+		u.Affiliation = models.AffiliationPENDING
+	case TrackStatusUnknown:
+		u.Affiliation = models.AffiliationUNKNOWN
+	case TrackStatusSuspected:
+		u.Affiliation = models.AffiliationSUSPECT
+	case TrackStatusHostile:
+		u.Affiliation = models.AffiliationHOSTILE
+	case TrackStatusNeutral:
+		u.Affiliation = models.AffiliationNEUTRAL
+	case TrackStatusDestroyed:
+		// Keep as HOSTILE even when destroyed for historical tracking
+		u.Affiliation = models.AffiliationHOSTILE
+	case TrackStatusLost:
+		// Keep last known affiliation when lost
+		// Don't change affiliation
+	}
 
 	// Update threat level based on classification
 	switch newClass {
@@ -545,14 +572,15 @@ func calculateDistanceKm(p1, p2 *models.GeomPoint) float64 {
 // normalizeVector normalizes a 3D vector to unit length
 func normalizeVector(v *models.GeomPoint) *models.GeomPoint {
 	magnitude := math.Sqrt(v.Coordinates[0]*v.Coordinates[0] + v.Coordinates[1]*v.Coordinates[1] + v.Coordinates[2]*v.Coordinates[2])
+	pointType := "Point"
 	if magnitude == 0 {
 		return &models.GeomPoint{
-			Type:        "Point",
+			Type:        &pointType,
 			Coordinates: []float64{0, 0, 0},
 		}
 	}
 	return &models.GeomPoint{
-		Type: "Point",
+		Type: &pointType,
 		Coordinates: []float64{
 			v.Coordinates[0] / magnitude,
 			v.Coordinates[1] / magnitude,

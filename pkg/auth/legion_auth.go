@@ -197,5 +197,11 @@ func AuthenticateUserWithLegion(ctx context.Context, legionURL string) (*TokenMa
 		config = DefaultAuthConfig()
 	}
 
+	// Fix localhost port issue: if Legion URL is localhost and Keycloak URL uses port 8080, change to 8443
+	if strings.Contains(legionURL, "localhost") && strings.Contains(config.KeycloakURL, "localhost:8080") {
+		config.KeycloakURL = strings.Replace(config.KeycloakURL, "localhost:8080", "localhost:8443", 1)
+		fmt.Println("⚠️  Adjusted Keycloak URL for localhost: using port 8443 instead of 8080")
+	}
+
 	return AuthenticateUser(ctx, config)
 }

@@ -1,0 +1,523 @@
+swagger: "2.0"
+info:
+  title: Legion Platform API
+  description: API for Legion Command & Control Platform
+  version: 3.0.0
+host: api.legion.picogrid.com
+basePath: /v3
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths: {}
+definitions:
+  # Enums
+  Category:
+    type: string
+    description: Entity category classification
+    enum:
+      - DEVICE
+      - DETECTION
+      - ALERT
+      - WEATHER
+      - GEOMETRIC
+      - ZONE
+      - SENSOR
+      - VEHICLE
+      - UXV
+      - INSTALLATION
+      - PERSONNEL
+      - EQUIPMENT
+      - SYSTEM
+    x-enum-varnames:
+      - CATEGORY_DEVICE
+      - CATEGORY_DETECTION
+      - CATEGORY_ALERT
+      - CATEGORY_WEATHER
+      - CATEGORY_GEOMETRIC
+      - CATEGORY_ZONE
+      - CATEGORY_SENSOR
+      - CATEGORY_VEHICLE
+      - CATEGORY_UXV
+      - CATEGORY_INSTALLATION
+      - CATEGORY_PERSONNEL
+      - CATEGORY_EQUIPMENT
+      - CATEGORY_SYSTEM
+
+  Affiliation:
+    type: string
+    description: NATO Joint Military Symbology (MIL-STD-2525D/APP-6D) Affiliation Codes
+    enum:
+      - PENDING
+      - UNKNOWN
+      - ASSUMED_FRIEND
+      - FRIEND
+      - NEUTRAL
+      - SUSPECT
+      - HOSTILE
+      - EXERCISE_PENDING
+      - EXERCISE_UNKNOWN
+      - EXERCISE_FRIEND
+      - EXERCISE_NEUTRAL
+      - EXERCISE_ASSUMED_FRIEND
+      - JOKER
+      - FAKER
+      - NONE_SPECIFIED
+    x-enum-varnames:
+      - AFFILIATION_PENDING
+      - AFFILIATION_UNKNOWN
+      - AFFILIATION_ASSUMED_FRIEND
+      - AFFILIATION_FRIEND
+      - AFFILIATION_NEUTRAL
+      - AFFILIATION_SUSPECT
+      - AFFILIATION_HOSTILE
+      - AFFILIATION_EXERCISE_PENDING
+      - AFFILIATION_EXERCISE_UNKNOWN
+      - AFFILIATION_EXERCISE_FRIEND
+      - AFFILIATION_EXERCISE_NEUTRAL
+      - AFFILIATION_EXERCISE_ASSUMED_FRIEND
+      - AFFILIATION_JOKER
+      - AFFILIATION_FAKER
+      - AFFILIATION_NONE_SPECIFIED
+
+  MessageCategory:
+    type: string
+    description: Feed message category
+    enum:
+      - MESSAGE
+      - FILE
+    x-enum-varnames:
+      - MESSAGE_CATEGORY_MESSAGE
+      - MESSAGE_CATEGORY_FILE
+
+  # Request/Response Models
+  CreateEntityRequest:
+    type: object
+    required:
+      - organization_id
+      - name
+      - category
+      - type
+      - status
+    properties:
+      organization_id:
+        type: string
+        format: uuid
+        description: The unique identifier of the organization to which the entity belongs
+        example: "b7c5e4d3-a2b1-4f0e-8d9c-1a2b3c4d5e6f"
+      name:
+        type: string
+        description: A user-defined name for the entity
+        example: "Axis Camera"
+      category:
+        $ref: '#/definitions/Category'
+      type:
+        type: string
+        description: A specific type within the category
+        example: "Camera"
+      status:
+        type: string
+        description: The current operational status of the entity
+        example: "active"
+      affiliation:
+        $ref: '#/definitions/Affiliation'
+      metadata:
+        type: object
+        description: Arbitrary metadata associated with the entity (JSON object)
+        example:
+          ip_address: "192.168.1.100"
+          resolution: "1080p"
+
+  UpdateEntityRequest:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        description: The unique identifier of the entity to be updated
+        example: "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+      name:
+        type: string
+        description: The new name for the entity
+        example: "Axis Camera"
+      category:
+        $ref: '#/definitions/Category'
+      type:
+        type: string
+        description: The new type for the entity
+        example: "PTZ Camera"
+      status:
+        type: string
+        description: The new status for the entity
+        example: "inactive"
+      affiliation:
+        $ref: '#/definitions/Affiliation'
+      metadata:
+        type: object
+        description: New or updated metadata for the entity (JSON object). This will replace existing metadata
+        example:
+          ip_address: "192.168.1.101"
+          firmware: "v2.1"
+
+  EntityResponse:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        description: The unique identifier of the entity
+      organization_id:
+        type: string
+        format: uuid
+        description: The organization ID this entity belongs to
+      name:
+        type: string
+        description: The name of the entity
+      category:
+        $ref: '#/definitions/Category'
+      type:
+        type: string
+        description: The type of the entity
+      status:
+        type: string
+        description: The current status of the entity
+      affiliation:
+        $ref: '#/definitions/Affiliation'
+      metadata:
+        type: object
+        description: Metadata associated with the entity
+      created_at:
+        type: string
+        format: date-time
+        description: When the entity was created
+      updated_at:
+        type: string
+        format: date-time
+        description: When the entity was last updated
+
+  SearchEntitiesRequest:
+    type: object
+    required:
+      - organization_id
+    properties:
+      organization_id:
+        type: string
+        format: uuid
+        description: The organization ID to search within
+      filters:
+        $ref: '#/definitions/SearchFilters'
+
+  SearchFilters:
+    type: object
+    properties:
+      name:
+        type: string
+        description: Filter by entity name (partial match)
+      category:
+        type: array
+        items:
+          $ref: '#/definitions/Category'
+        description: Filter by categories
+      affiliation:
+        type: array
+        items:
+          $ref: '#/definitions/Affiliation'
+        description: Filter by affiliations
+      type:
+        type: string
+        description: Filter by entity type
+      status:
+        type: string
+        description: Filter by status
+
+  SearchEntitiesResponse:
+    type: object
+    properties:
+      results:
+        type: array
+        items:
+          $ref: '#/definitions/EntityResponse'
+      total:
+        type: integer
+        description: Total number of matching entities
+      page:
+        type: integer
+        description: Current page number
+      page_size:
+        type: integer
+        description: Number of results per page
+
+  CreateEntityLocationRequest:
+    type: object
+    required:
+      - position
+    properties:
+      position:
+        $ref: '#/definitions/GeomPoint'
+      source:
+        type: string
+        description: Source of the location update
+        example: "GPS"
+
+  GeomPoint:
+    type: object
+    required:
+      - type
+      - coordinates
+    properties:
+      type:
+        type: string
+        enum: ["Point"]
+        example: "Point"
+      coordinates:
+        type: array
+        items:
+          type: number
+          format: double
+        minItems: 3
+        maxItems: 3
+        description: ECEF coordinates [x, y, z]
+        example: [4517590.878, 832293.160, 4524856.575]
+
+  CreateFeedDefinitionRequest:
+    type: object
+    required:
+      - category
+      - feed_name
+      - data_type
+      - is_active
+    properties:
+      category:
+        $ref: '#/definitions/MessageCategory'
+      feed_name:
+        type: string
+        description: Name of the feed
+      entity_id:
+        type: string
+        format: uuid
+        description: Associated entity ID
+      data_type:
+        type: string
+        description: MIME type of the data
+        example: "application/json"
+      description:
+        type: string
+        description: Description of the feed
+      is_active:
+        type: boolean
+        description: Whether the feed is active
+
+  FeedDefinitionResponse:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      category:
+        $ref: '#/definitions/MessageCategory'
+      feed_name:
+        type: string
+      entity_id:
+        type: string
+        format: uuid
+      data_type:
+        type: string
+      description:
+        type: string
+      is_active:
+        type: boolean
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+
+  FeedDefinitionSearchRequest:
+    type: object
+    properties:
+      category:
+        $ref: '#/definitions/MessageCategory'
+      entity_id:
+        type: string
+        format: uuid
+      is_active:
+        type: boolean
+
+  FeedDefinitionSearchResponse:
+    type: object
+    properties:
+      results:
+        type: array
+        items:
+          $ref: '#/definitions/FeedDefinitionResponse'
+      total:
+        type: integer
+
+  IngestFeedDataRequest:
+    type: object
+    required:
+      - entity_id
+      - feed_definition_id
+      - recorded_at
+    properties:
+      entity_id:
+        type: string
+        format: uuid
+      feed_definition_id:
+        type: string
+        format: uuid
+      recorded_at:
+        type: string
+        format: date-time
+      payload:
+        type: object
+        description: The data payload
+
+  # Additional models for client compatibility
+  EntityPaginatedResponse:
+    type: object
+    properties:
+      results:
+        type: array
+        items:
+          $ref: '#/definitions/EntityResponse'
+      total:
+        type: integer
+        format: int64
+      page:
+        type: integer
+      page_size:
+        type: integer
+
+  EntityLocationResponse:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      entity_id:
+        type: string
+        format: uuid
+      geometry:
+        $ref: '#/definitions/GeomPoint'
+      timestamp:
+        type: string
+        format: date-time
+
+  EntityLocationPaginatedResponse:
+    type: object
+    properties:
+      locations:
+        type: array
+        items:
+          $ref: '#/definitions/EntityLocationResponse'
+      total:
+        type: integer
+        format: int64
+      page:
+        type: integer
+      page_size:
+        type: integer
+
+  FeedDefinitionListResponse:
+    type: object
+    properties:
+      results:
+        type: array
+        items:
+          $ref: '#/definitions/FeedDefinitionResponse'
+      total:
+        type: integer
+        format: int64
+      page:
+        type: integer
+      page_size:
+        type: integer
+
+  UpdateFeedDefinitionRequest:
+    type: object
+    properties:
+      name:
+        type: string
+      description:
+        type: string
+      is_active:
+        type: boolean
+      category:
+        $ref: '#/definitions/MessageCategory'
+
+  FeedDataResponse:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      feed_id:
+        type: string
+        format: uuid
+      data:
+        type: object
+      timestamp:
+        type: string
+        format: date-time
+
+  FeedDataSearchRequest:
+    type: object
+    properties:
+      feed_id:
+        type: string
+        format: uuid
+      start_time:
+        type: string
+        format: date-time
+      end_time:
+        type: string
+        format: date-time
+
+  FeedDataListResponse:
+    type: object
+    properties:
+      data:
+        type: array
+        items:
+          $ref: '#/definitions/FeedDataResponse'
+      total:
+        type: integer
+        format: int64
+      page:
+        type: integer
+      page_size:
+        type: integer
+
+  ServiceIngestMessageRequest:
+    type: object
+    required:
+      - feed_id
+      - data
+    properties:
+      feed_id:
+        type: string
+        format: uuid
+      data:
+        type: object
+      timestamp:
+        type: string
+        format: date-time
+
+  SearchEntityLocationsRequest:
+    type: object
+    properties:
+      entity_ids:
+        type: array
+        items:
+          type: string
+          format: uuid
+      start_time:
+        type: string
+        format: date-time
+      end_time:
+        type: string
+        format: date-time

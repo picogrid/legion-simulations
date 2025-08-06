@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/pkg/client"
 	"github.com/picogrid/legion-simulations/pkg/logger"
@@ -134,7 +135,7 @@ func (s *SimpleSimulation) getEntityCategory() string {
 func (s *SimpleSimulation) createEntity(ctx context.Context, legionClient *client.Legion, index int, location Location) (string, error) {
 	droneNumber := index + 1
 	droneName := fmt.Sprintf("Simulator Drone %d - %s", droneNumber, location.City)
-	category := models.CATEGORY_UXV
+	category := models.CategoryUXV
 	entityType := "UAV"
 	status := "ACTIVE"
 
@@ -142,13 +143,14 @@ func (s *SimpleSimulation) createEntity(ctx context.Context, legionClient *clien
 	if err != nil {
 		return "", fmt.Errorf("invalid organization ID: %w", err)
 	}
+	orgIDStrfmt := strfmt.UUID(orgID.String())
 
 	searchFilters := &models.SearchFilters{
 		Name:     droneName,
 		Category: []models.Category{category},
 	}
 	searchReq := &models.SearchEntitiesRequest{
-		OrganizationID: orgID,
+		OrganizationID: &orgIDStrfmt,
 		Filters:        searchFilters,
 	}
 
@@ -180,11 +182,11 @@ func (s *SimpleSimulation) createEntity(ctx context.Context, legionClient *clien
 	metadataRaw := json.RawMessage(metadataJSON)
 
 	req := &models.CreateEntityRequest{
-		Name:           droneName,
-		OrganizationID: orgID,
-		Type:           entityType,
-		Category:       category,
-		Status:         status,
+		Name:           &droneName,
+		OrganizationID: &orgIDStrfmt,
+		Type:           &entityType,
+		Category:       &category,
+		Status:         &status,
 		Metadata:       &metadataRaw,
 	}
 
@@ -226,13 +228,15 @@ func (s *SimpleSimulation) updateLocations(ctx context.Context, legionClient *cl
 		x, y, z := latLonAltToECEF(lat, lon, alt)
 
 		// Create GeoJSON point for position
+		pointType := "Point"
 		position := &models.GeomPoint{
-			Type:        "Point",
+			Type:        &pointType,
 			Coordinates: []float64{x, y, z},
 		}
 
 		req := &models.CreateEntityLocationRequest{
 			Position: position,
+			Source:   "Simple-Simulation",
 		}
 
 		_, err := legionClient.CreateEntityLocation(ctx, entityID, req)
