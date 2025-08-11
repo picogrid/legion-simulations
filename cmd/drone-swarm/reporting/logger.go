@@ -398,29 +398,23 @@ func (sl *SimulationLogger) logEvent(event SimulationEvent) {
 
 // logColoredMessage logs a message with color based on severity
 func (sl *SimulationLogger) logColoredMessage(severity, eventType, message string) {
-	timestamp := time.Now().Format("15:04:05.000")
+	// Use the global logger instead of direct fmt.Printf to respect log levels
+	logMessage := fmt.Sprintf("%s | %s", eventType, message)
 
-	var severityColor *color.Color
 	switch severity {
 	case SeverityDebug:
-		severityColor = colorDebug
+		logger.Debug(logMessage)
 	case SeverityInfo:
-		severityColor = colorInfo
+		logger.Info(logMessage)
 	case SeverityWarning:
-		severityColor = colorWarning
+		logger.Warn(logMessage)
 	case SeverityError:
-		severityColor = colorError
+		logger.Error(logMessage)
 	case SeverityCritical:
-		severityColor = colorCritical
+		logger.Error(logMessage) // Map critical to error level
 	default:
-		severityColor = colorInfo
+		logger.Info(logMessage)
 	}
-
-	fmt.Printf("[%s] %s %s | %s\n",
-		timestamp,
-		severityColor.Sprint(fmt.Sprintf("%-8s", severity)),
-		eventType,
-		message)
 }
 
 // getTeamColor returns the color for a team

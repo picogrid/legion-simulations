@@ -192,6 +192,12 @@ func (s *DroneSwarmSimulation) Configure(params map[string]interface{}) error {
 		s.config.CleanupExisting = val
 	}
 
+	// Handle log level parameter and apply to global logger
+	if val, ok := params["log_level"].(string); ok {
+		logger.Infof("Setting log level to: %s", val)
+		logger.SetLevel(logger.ParseLevel(val))
+	}
+
 	// Validate configuration
 	if s.config.NumCounterUASSystems < 1 {
 		return fmt.Errorf("must have at least 1 Counter-UAS system")
