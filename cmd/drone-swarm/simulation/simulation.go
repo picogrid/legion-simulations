@@ -1314,8 +1314,12 @@ func (s *DroneSwarmSimulation) engageTarget(system *CounterUASSystem, target *UA
 		system.AmmoRemaining--
 	}
 
-	// Set cooldown based on reload time
-	cooldownTicks := system.ReloadTimeSeconds / int(s.config.UpdateInterval.Seconds())
+	// Set cooldown based on reload time - protect against divide by zero
+	updateIntervalSeconds := int(s.config.UpdateInterval.Seconds())
+	if updateIntervalSeconds < 1 {
+		updateIntervalSeconds = 1 // Minimum 1 second for safety
+	}
+	cooldownTicks := system.ReloadTimeSeconds / updateIntervalSeconds
 	if cooldownTicks < 1 {
 		cooldownTicks = 1
 	}
