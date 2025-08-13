@@ -1,0 +1,83 @@
+name: "Drone Tornado"
+description: "Create N drones and move them in a circle at constant speed"
+version: "1.0.0"
+category: "demo"
+
+parameters:
+  - name: "number_of_drones"
+    type: "integer"
+    description: "Number of drones to create"
+    default: 8
+    min: 1
+    required: true
+
+  - name: "update_interval"
+    type: "float"
+    description: "How often to update entity location (seconds)"
+    default: 1.0
+    min: 0.1
+    max: 60.0
+    required: true
+
+  - name: "duration"
+    type: "duration"
+    description: "How long to run the simulation"
+    default: "1m"
+    required: true
+
+  - name: "radius_m"
+    type: "float"
+    description: "Radius of the circular path (meters)"
+    default: 500.0
+    min: 10.0
+    required: true
+
+  - name: "radius_offset_m"
+    type: "float"
+    description: "Random per-drone radius offset ±value (meters)"
+    default: 10.0
+    min: 0.0
+    required: false
+
+  - name: "speed_mps"
+    type: "float"
+    description: "Drone speed along the circle (meters/second)"
+    default: 20.0
+    min: 0.5
+    max: 200.0
+    required: true
+
+  - name: "center_lat"
+    type: "float"
+    description: "Center latitude (degrees)"
+    default: 37.7749
+    required: true
+
+  - name: "center_lon"
+    type: "float"
+    description: "Center longitude (degrees)"
+    default: -122.4194
+    required: true
+
+  - name: "center_alt_m"
+    type: "float"
+    description: "Center altitude (meters)"
+    default: 120.0
+    required: true
+
+  - name: "cleanup_existing"
+    type: "boolean"
+    description: "Delete any existing 'Drone <n>' entities before starting"
+    default: false
+    required: false
+
+  - name: "delete_on_exit"
+    type: "boolean"
+    description: "Delete the created entities when the simulation ends"
+    default: true
+    required: false
+
+  - name: "organization_id"
+    type: "string"
+    description: "Organization ID for entity creation"
+    required: true
