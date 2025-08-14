@@ -21,6 +21,7 @@ import (
 
 	// Import simulations to register them
 	_ "github.com/picogrid/legion-simulations/cmd/drone-swarm/simulation"
+	_ "github.com/picogrid/legion-simulations/cmd/drone-tornado"
 	_ "github.com/picogrid/legion-simulations/cmd/simple"
 )
 
