@@ -1,0 +1,90 @@
+name: "Track Traffic Demo"
+description: "Spread out multiple tracks with smooth routes and seeded history for frontend map testing"
+version: "1.0.0"
+category: "demo"
+
+parameters:
+  - name: "total_tracks"
+    type: "integer"
+    description: "Total number of tracks to create for map testing or load testing"
+    default: 7
+    min: 1
+    required: true
+
+  - name: "max_concurrency"
+    type: "integer"
+    description: "Maximum number of concurrent API operations used for create, seed, update, and cleanup"
+    default: 8
+    min: 1
+    required: false
+
+  - name: "update_interval"
+    type: "float"
+    description: "How often to append a new live track location (seconds)"
+    default: 2.0
+    min: 1.0
+    max: 60.0
+    required: true
+
+  - name: "duration"
+    type: "duration"
+    description: "How long to run the simulation"
+    default: "5m"
+    required: true
+
+  - name: "center_lat"
+    type: "float"
+    description: "Center latitude for the overall layout"
+    default: 37.7749
+    required: true
+
+  - name: "center_lon"
+    type: "float"
+    description: "Center longitude for the overall layout"
+    default: -122.4194
+    required: true
+
+  - name: "center_alt_m"
+    type: "float"
+    description: "Base altitude offset for the scene (meters)"
+    default: 0.0
+    required: true
+
+  - name: "grid_spacing_m"
+    type: "float"
+    description: "Base spacing between tracks in the jittered grid layout"
+    default: 700.0
+    min: 100.0
+    required: true
+
+  - name: "grid_jitter_m"
+    type: "float"
+    description: "Random offset applied to each grid slot so the layout feels less rigid"
+    default: 80.0
+    min: 0.0
+    required: true
+
+  - name: "history_points"
+    type: "integer"
+    description: "How many historical points to seed per track before live updates start"
+    default: 36
+    min: 2
+    required: true
+
+  - name: "history_step_seconds"
+    type: "float"
+    description: "Spacing between seeded historical points (seconds)"
+    default: 5.0
+    min: 1.0
+    required: true
+
+  - name: "delete_on_exit"
+    type: "boolean"
+    description: "Delete all created tracks and their history when the simulation ends"
+    default: true
+    required: false
+
+  - name: "organization_id"
+    type: "string"
+    description: "Organization ID for track creation"
+    required: true

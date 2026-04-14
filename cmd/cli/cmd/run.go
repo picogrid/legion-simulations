@@ -23,6 +23,7 @@ import (
 	_ "github.com/picogrid/legion-simulations/cmd/drone-swarm/simulation"
 	_ "github.com/picogrid/legion-simulations/cmd/drone-tornado"
 	_ "github.com/picogrid/legion-simulations/cmd/simple"
+	_ "github.com/picogrid/legion-simulations/cmd/track-traffic"
 )
 
 var runCmd = &cobra.Command{
