@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/core"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/reporting"
@@ -441,12 +440,15 @@ func (sc *SimulationController) createCounterUASSystems(ctx context.Context) err
 		}
 		metadataRaw := json.RawMessage(metadata)
 
-		orgIDStr := strfmt.UUID(sc.organizationID)
+		orgID, err := uuid.Parse(sc.organizationID)
+		if err != nil {
+			return fmt.Errorf("invalid organization ID: %w", err)
+		}
 		category := models.CategoryDEVICE
 		entityType := EntityTypeCounterUAS
 
 		entityReq := &models.CreateEntityRequest{
-			OrganizationID: &orgIDStr,
+			OrganizationID: &orgID,
 			Name:           &system.Name,
 			Category:       &category,
 			Type:           &entityType,
@@ -460,17 +462,15 @@ func (sc *SimulationController) createCounterUASSystems(ctx context.Context) err
 			return fmt.Errorf("failed to create Counter-UAS entity: %w", err)
 		}
 
-		systemID, err := uuid.Parse(string(createdEntity.ID))
-		if err != nil {
-			return fmt.Errorf("failed to parse entity ID: %w", err)
-		}
-		system.ID = systemID
+		system.ID = createdEntity.ID
 		sc.counterUASSystems[system.ID] = system
 
 		// Set initial location
+		recordedAt := time.Now()
 		locationReq := &models.CreateEntityLocationRequest{
-			Position: position,
-			Source:   "Drone-Swarm-Simulation",
+			Position:   position,
+			Source:     "Drone-Swarm-Simulation",
+			RecordedAt: &recordedAt,
 		}
 
 		if _, err := sc.legionClient.CreateEntityLocation(orgCtx, system.ID.String(), locationReq); err != nil {
@@ -534,12 +534,15 @@ func (sc *SimulationController) createUASThreats(ctx context.Context) error {
 			}
 			metadataRaw := json.RawMessage(metadata)
 
-			orgIDStr := strfmt.UUID(sc.organizationID)
-			category := models.CategoryUXV
+			orgID, err := uuid.Parse(sc.organizationID)
+			if err != nil {
+				return fmt.Errorf("invalid organization ID: %w", err)
+			}
+			category := models.CategoryTRACK
 			entityType := EntityTypeUAS
 
 			entityReq := &models.CreateEntityRequest{
-				OrganizationID: &orgIDStr,
+				OrganizationID: &orgID,
 				Name:           &threat.Name,
 				Category:       &category,
 				Type:           &entityType,
@@ -553,17 +556,15 @@ func (sc *SimulationController) createUASThreats(ctx context.Context) error {
 				return fmt.Errorf("failed to create UAS entity: %w", err)
 			}
 
-			threatID, err := uuid.Parse(string(createdEntity.ID))
-			if err != nil {
-				return fmt.Errorf("failed to parse entity ID: %w", err)
-			}
-			threat.ID = threatID
+			threat.ID = createdEntity.ID
 			sc.uasThreats[threat.ID] = threat
 
 			// Set initial location
+			recordedAt := time.Now()
 			locationReq := &models.CreateEntityLocationRequest{
-				Position: position,
-				Source:   "Drone-Swarm-Simulation",
+				Position:   position,
+				Source:     "Drone-Swarm-Simulation",
+				RecordedAt: &recordedAt,
 			}
 
 			if _, err := sc.legionClient.CreateEntityLocation(orgCtx, threat.ID.String(), locationReq); err != nil {

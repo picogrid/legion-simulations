@@ -306,14 +306,16 @@ func (s *MySimulation) Stop() error {
 func (s *MySimulation) createEntity(ctx context.Context, legionClient *client.Legion, index int) (string, error) {
     // Helper to create string pointers (required by the API models)
     strPtr := func(s string) *string { return &s }
+    categoryPtr := func(c models.Category) *models.Category { return &c }
+    orgID := uuid.MustParse(s.organizationID)
     
-    req := &models.DtosCreateEntityRequest{
+    req := &models.CreateEntityRequest{
         Name:           strPtr(fmt.Sprintf("Sim Entity %d", index+1)),
         Type:           strPtr("simulation"),
-        Category:       strPtr("DEVICE"),
+        Category:       categoryPtr(models.CategoryDEVICE),
         Status:         strPtr("active"),
-        OrganizationID: strPtr(s.organizationID),
-        Metadata:       fmt.Sprintf(`{"simulation": "%s", "index": %d}`, s.Name(), index),
+        OrganizationID: &orgID,
+        Metadata:       &metadataRaw,
     }
     
     resp, err := legionClient.CreateEntity(ctx, req)
@@ -321,22 +323,20 @@ func (s *MySimulation) createEntity(ctx context.Context, legionClient *client.Le
         return "", err
     }
     
-    return resp.ID, nil
+    return resp.ID.String(), nil
 }
 
 // Helper function to update entity locations
 func (s *MySimulation) updateEntities(ctx context.Context, legionClient *client.Legion) error {
     for _, entityID := range s.entities {
-        // Example: Update location (using ECEF coordinates)
-        // In a real simulation, you would calculate actual positions
-        position := fmt.Sprintf(`{"type":"Point","coordinates":[%f,%f,%f]}`,
-            4517590.878, // X coordinate in ECEF
-            832293.160,  // Y coordinate in ECEF  
-            4524856.575) // Z coordinate in ECEF
-        
-        strPtr := func(s string) *string { return &s }
-        req := &models.DtosCreateEntityLocationRequest{
-            Position: strPtr(position),
+        recordedAt := time.Now()
+        req := &models.CreateEntityLocationRequest{
+            Position: &models.GeomPoint{
+                Type:        strPtr("Point"),
+                Coordinates: []float64{4517590.878, 832293.160, 4524856.575},
+            },
+            RecordedAt: &recordedAt,
+            Source:     "my-simulation",
         }
         
         _, err := legionClient.CreateEntityLocation(ctx, entityID, req)
@@ -432,12 +432,12 @@ make rebuild
 
 ### Legion Client
 
-The project uses a hand-written Legion API client (`pkg/client/`) instead of generated code. This provides:
+The project uses a hand-written Legion API client (`pkg/client/`) on top of OpenAPI-derived raw models in `pkg/models/openapi.gen.go`. This provides:
 - Simplified API without complex dependencies
 - Easy-to-understand code structure organized by domain
 - Context-aware operations with proper authentication
 - Clean error handling
-- Type safety using models from `pkg/models/`
+- Type safety using the domain models in `pkg/models/`
 
 The client is organized into domain-specific files:
 - `client.go` - Core client functionality and HTTP request handling
@@ -454,20 +454,32 @@ The Legion client provides methods for all major operations:
 
 ```go
 // Creating entities
-entity, err := client.CreateEntity(ctx, &models.DtosCreateEntityRequest{...})
+entity, err := client.CreateEntity(ctx, &models.CreateEntityRequest{...})
 
 // Updating entity locations (ECEF coordinates)
-location, err := client.CreateEntityLocation(ctx, entityID, &models.DtosCreateEntityLocationRequest{...})
+location, err := client.CreateEntityLocation(ctx, entityID, &models.CreateEntityLocationRequest{...})
 
 // Creating feeds for data ingestion
-feed, err := client.CreateFeedDefinition(ctx, &models.DtosCreateFeedDefinitionRequest{...})
+feed, err := client.CreateFeedDefinition(ctx, &models.CreateFeedDefinitionRequest{...})
 
 // Sending telemetry data
-err := client.IngestServiceMessage(ctx, &models.DtosServiceIngestMessageRequest{...})
+err := client.IngestFeedData(ctx, &models.IngestFeedDataRequest{...})
 
 // Search for entities
 entities, err := client.SearchEntities(ctx, params)
 ```
+
+### Model Generation
+
+`openapi.yaml` is the checked-in source spec. Regenerate the raw OAS3-backed model layer with:
+
+```bash
+make generate-models
+# or
+go generate ./pkg/models
+```
+
+The generation flow uses `oapi-codegen` plus `cmd/tools/openapi-normalize` to normalize the OpenAPI 3.1 spec for generation without forking the checked-in source.
 
 ### ECEF Coordinates
 
@@ -513,12 +525,13 @@ for {
 }
 ```
 
-#### String Pointers for API Models
+#### API Helper Pointers
 ```go
-// Helper function since API models use string pointers
+// Helpers for the small number of pointer fields in domain models
 strPtr := func(s string) *string { return &s }
+categoryPtr := func(c models.Category) *models.Category { return &c }
 
-req := &models.DtosCreateEntityRequest{
+req := &models.CreateEntityRequest{
     Name: strPtr("My Entity"),
     // ...
 }

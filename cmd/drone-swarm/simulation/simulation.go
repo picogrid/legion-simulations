@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/controllers"
 	"github.com/picogrid/legion-simulations/cmd/drone-swarm/core"
@@ -350,7 +349,10 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 		metadataRaw := json.RawMessage(metadata)
 
 		// Create entity in Legion
-		orgID := strfmt.UUID(s.config.OrganizationID)
+		orgID, err := uuid.Parse(s.config.OrganizationID)
+		if err != nil {
+			return fmt.Errorf("invalid organization ID: %w", err)
+		}
 		category := models.CategoryDEVICE
 		entityType := EntityTypeCounterUAS
 		affiliation := models.AffiliationFRIEND
@@ -361,7 +363,7 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 			Type:           &entityType,
 			Status:         &system.Status,
 			Affiliation:    affiliation,
-			Metadata:       metadataRaw,
+			Metadata:       &metadataRaw,
 		}
 
 		// Create context with organization ID
@@ -373,11 +375,7 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 
 		// Update the map with the new Legion ID
 		delete(s.counterUASSystems, system.ID) // Remove old entry
-		newID, err := uuid.Parse(string(createdEntity.ID))
-		if err != nil {
-			return fmt.Errorf("failed to parse entity ID: %w", err)
-		}
-		system.ID = newID
+		system.ID = createdEntity.ID
 		s.counterUASSystems[system.ID] = system // Add with new ID
 
 		// Create health telemetry feed for this Counter-UAS system
@@ -437,8 +435,11 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 			metadataRaw := json.RawMessage(metadata)
 
 			// Create entity in Legion - using track classification
-			orgID := strfmt.UUID(s.config.OrganizationID)
-			category := models.CategoryUXV
+			orgID, err := uuid.Parse(s.config.OrganizationID)
+			if err != nil {
+				return fmt.Errorf("invalid organization ID: %w", err)
+			}
+			category := models.CategoryTRACK
 			entityType := EntityTypeUAS
 			entityReq := &models.CreateEntityRequest{
 				OrganizationID: &orgID,
@@ -447,7 +448,7 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 				Type:           &entityType,
 				Status:         &threat.Classification, // Use classification as status
 				Affiliation:    threat.Affiliation,     // Initially UNKNOWN, changes with classification
-				Metadata:       metadataRaw,
+				Metadata:       &metadataRaw,
 			}
 
 			// Create context with organization ID
@@ -459,11 +460,7 @@ func (s *DroneSwarmSimulation) createEntities(ctx context.Context) error {
 
 			// Update the map with the new Legion ID
 			delete(s.uasThreats, threat.ID) // Remove old entry
-			newID, err := uuid.Parse(string(createdEntity.ID))
-			if err != nil {
-				return fmt.Errorf("failed to parse entity ID: %w", err)
-			}
-			threat.ID = newID
+			threat.ID = createdEntity.ID
 			s.uasThreats[threat.ID] = threat // Add with new ID
 
 			logger.Infof("🔴 New air track detected: %s", trackNumber)
@@ -506,9 +503,11 @@ func (s *DroneSwarmSimulation) deployEntities(ctx context.Context) error {
 		system.Position.Coordinates[2] = baseZ + 50 // 50m elevation
 
 		// Update location in Legion
+		recordedAt := time.Now()
 		locationReq := &models.CreateEntityLocationRequest{
-			Position: system.Position,
-			Source:   "Drone-Swarm-Simulation",
+			Position:   system.Position,
+			Source:     "Drone-Swarm-Simulation",
+			RecordedAt: &recordedAt,
 		}
 
 		orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
@@ -553,9 +552,11 @@ func (s *DroneSwarmSimulation) deployEntities(ctx context.Context) error {
 		threat.ActualVelocity.Coordinates[2] = (dz / distance) * velocityMagnitude
 
 		// Update location in Legion
+		recordedAt := time.Now()
 		locationReq := &models.CreateEntityLocationRequest{
-			Position: threat.Position,
-			Source:   "Drone-Swarm-Simulation",
+			Position:   threat.Position,
+			Source:     "Drone-Swarm-Simulation",
+			RecordedAt: &recordedAt,
 		}
 
 		orgCtx := client.WithOrgID(ctx, s.config.OrganizationID)
@@ -1572,9 +1573,13 @@ func (s *DroneSwarmSimulation) cleanupExistingEntities(ctx context.Context) erro
 
 	// Search for each pattern separately to avoid overwhelming the API
 	for _, pattern := range patterns {
-		orgIDStr := strfmt.UUID(s.config.OrganizationID)
+		orgID, err := uuid.Parse(s.config.OrganizationID)
+		if err != nil {
+			logger.Warnf("Invalid organization ID during cleanup: %v", err)
+			continue
+		}
 		searchReq := &models.SearchEntitiesRequest{
-			OrganizationID: &orgIDStr,
+			OrganizationID: &orgID,
 			Filters: &models.SearchFilters{
 				Name: pattern, // This will do a prefix match
 			},
@@ -1682,12 +1687,11 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 	description := fmt.Sprintf("Health telemetry data for Counter-UAS system %s", systemName)
 	category := models.MessageCategoryMESSAGE
 	dataType := "application/json"
-	entityUUID := strfmt.UUID(systemID.String())
 	isActive := true
 	feedReq := &models.CreateFeedDefinitionRequest{
 		Category:    &category,
 		FeedName:    &feedName,
-		EntityID:    entityUUID,
+		EntityID:    systemID,
 		DataType:    &dataType,
 		Description: description,
 		IsActive:    &isActive,
@@ -1698,9 +1702,8 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 
 	// First check if feed already exists for this entity
 	searchCategory := models.MessageCategoryMESSAGE
-	searchEntityID := strfmt.UUID(systemID.String())
 	searchReq := &models.FeedDefinitionSearchRequest{
-		EntityID: searchEntityID,
+		EntityID: systemID,
 		Category: searchCategory,
 	}
 
@@ -1710,8 +1713,7 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 		for _, feed := range searchResult.Results {
 			if strings.Contains(feed.FeedName, "cuas_health_telemetry") {
 				logger.Debugf("Using existing health telemetry feed for %s", systemName)
-				feedUUID, _ := uuid.Parse(string(feed.ID))
-				return feedUUID, nil
+				return feed.ID, nil
 			}
 		}
 	}
@@ -1733,10 +1735,9 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 			searchResult2, err2 := s.legionClient.SearchFeedDefinitions(orgCtx, searchReq2)
 			if err2 == nil && searchResult2 != nil {
 				for _, feed := range searchResult2.Results {
-					if feed.FeedName == feedName && feed.EntityID != "" && string(feed.EntityID) == systemID.String() {
+					if feed.FeedName == feedName && feed.EntityID == systemID {
 						logger.Infof("Found existing feed with matching name and entity ID")
-						feedUUID, _ := uuid.Parse(string(feed.ID))
-						return feedUUID, nil
+						return feed.ID, nil
 					}
 				}
 			}
@@ -1744,9 +1745,8 @@ func (s *DroneSwarmSimulation) createHealthTelemetryFeed(ctx context.Context, sy
 		return uuid.Nil, fmt.Errorf("failed to create feed definition: %w", err)
 	}
 
-	logger.Debugf("Successfully created feed definition with ID: %s for system: %s", string(createdFeed.ID), systemName)
-	feedUUID, _ := uuid.Parse(string(createdFeed.ID))
-	return feedUUID, nil
+	logger.Debugf("Successfully created feed definition with ID: %s for system: %s", createdFeed.ID, systemName)
+	return createdFeed.ID, nil
 }
 
 // sendHealthTelemetryViaFeed sends health telemetry data through the feed
@@ -1826,12 +1826,10 @@ func (s *DroneSwarmSimulation) sendHealthTelemetryViaFeed(ctx context.Context, s
 
 	// Create feed data ingest request
 	payloadRaw := json.RawMessage(payload)
-	entityIDStr := strfmt.UUID(system.ID.String())
-	feedIDStr := strfmt.UUID(feedID.String())
-	recordedAt := strfmt.DateTime(time.Now())
+	recordedAt := time.Now()
 	ingestReq := &models.IngestFeedDataRequest{
-		EntityID:         &entityIDStr,
-		FeedDefinitionID: &feedIDStr,
+		EntityID:         &system.ID,
+		FeedDefinitionID: &feedID,
 		RecordedAt:       &recordedAt,
 		Payload:          &payloadRaw,
 	}
@@ -1862,8 +1860,7 @@ func (s *DroneSwarmSimulation) sendHealthTelemetryViaFeed(ctx context.Context, s
 			logger.Infof("Successfully recreated feed for system %s (new Feed ID: %s)", system.Name, newFeedID.String())
 
 			// Update the request with the new feed ID and retry
-			newFeedIDStr := strfmt.UUID(newFeedID.String())
-			ingestReq.FeedDefinitionID = &newFeedIDStr
+			ingestReq.FeedDefinitionID = &newFeedID
 			retryErr := s.legionClient.IngestFeedData(orgCtx, ingestReq)
 			if retryErr != nil {
 				logger.Errorf("Failed to send telemetry even after feed recreation for system %s: %v", system.Name, retryErr)

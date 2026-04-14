@@ -8,9 +8,9 @@ import (
 
 // The set of roles that can be used.
 var (
-	ADMIN       = NewOrgRole("ADMIN")
-	LIMITED     = NewOrgRole("LIMITED")
-	FULL_ACCESS = NewOrgRole("FULL_ACCESS")
+	OrgRoleAdmin      = NewOrgRole("ADMIN")
+	OrgRoleLimited    = NewOrgRole("LIMITED")
+	OrgRoleFullAccess = NewOrgRole("FULL_ACCESS")
 )
 
 // =============================================================================

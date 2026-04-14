@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 
 	"github.com/picogrid/legion-simulations/pkg/client"
@@ -154,15 +153,13 @@ func (s *DroneTornadoSimulation) createDroneEntity(ctx context.Context, legionCl
 	if err != nil {
 		return "", fmt.Errorf("invalid organization ID: %w", err)
 	}
-	orgID := strfmt.UUID(orgUUID.String())
-
 	// Try to find existing matching entity by partial name and category/type to avoid duplicate creations
 	searchFilters := &models.SearchFilters{
 		Name:     name, // partial match supported
 		Category: []models.Category{category},
 		Type:     entityType,
 	}
-	searchReq := &models.SearchEntitiesRequest{OrganizationID: &orgID, Filters: searchFilters}
+	searchReq := &models.SearchEntitiesRequest{OrganizationID: &orgUUID, Filters: searchFilters}
 	if resp, err := legionClient.SearchEntities(ctx, searchReq); err == nil && resp != nil && len(resp.Results) > 0 {
 		existing := resp.Results[0]
 		logger.Infof("Using existing entity: %s (%s)", existing.Name, existing.ID)
@@ -179,7 +176,7 @@ func (s *DroneTornadoSimulation) createDroneEntity(ctx context.Context, legionCl
 
 	req := &models.CreateEntityRequest{
 		Name:           &name,
-		OrganizationID: &orgID,
+		OrganizationID: &orgUUID,
 		Type:           &entityType,
 		Category:       &category,
 		Status:         &status,
@@ -235,7 +232,8 @@ func (s *DroneTornadoSimulation) updateLocations(ctx context.Context, legionClie
 		pointType := "Point"
 		position := &models.GeomPoint{Type: &pointType, Coordinates: []float64{x, y, z}}
 
-		req := &models.CreateEntityLocationRequest{Position: position, Source: "Drone-Tornado"}
+		recordedAt := time.Now()
+		req := &models.CreateEntityLocationRequest{Position: position, Source: "Drone-Tornado", RecordedAt: &recordedAt}
 		if _, err := legionClient.CreateEntityLocation(ctx, entityID, req); err != nil {
 			logger.Errorf("Failed to update location for entity %s: %v", entityID, err)
 			continue
@@ -253,15 +251,13 @@ func (s *DroneTornadoSimulation) cleanupExistingEntities(ctx context.Context, le
 	if err != nil {
 		return fmt.Errorf("invalid organization ID: %w", err)
 	}
-	orgID := strfmt.UUID(orgUUID.String())
-
 	// Search for any entities named with prefix "Drone " and type/category matching
 	filters := &models.SearchFilters{
 		Name:     "Drone ", // partial match
 		Category: []models.Category{category},
 		Type:     entityType,
 	}
-	req := &models.SearchEntitiesRequest{OrganizationID: &orgID, Filters: filters}
+	req := &models.SearchEntitiesRequest{OrganizationID: &orgUUID, Filters: filters}
 	resp, err := legionClient.SearchEntities(ctx, req)
 	if err != nil {
 		return err
@@ -270,7 +266,7 @@ func (s *DroneTornadoSimulation) cleanupExistingEntities(ctx context.Context, le
 		return nil
 	}
 	for _, e := range resp.Results {
-		if e == nil || e.ID.String() == "" {
+		if e.ID == uuid.Nil {
 			continue
 		}
 		if err := legionClient.DeleteEntity(ctx, e.ID.String()); err != nil {
