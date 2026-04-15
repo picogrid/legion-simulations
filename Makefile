@@ -113,6 +113,12 @@ deps:
 check: lint test
 	@echo "All checks passed!"
 
+.PHONY: generate-models
+generate-models:
+	@echo "Generating OpenAPI models..."
+	@go generate ./pkg/models
+	@echo "Model generation complete"
+
 # ==============================================================================
 # Help
 
@@ -144,3 +150,4 @@ help:
 	@echo "  make run            - Build and run interactive CLI"
 	@echo "  make list           - Build and list simulations"
 	@echo "  make deps           - Update dependencies"
+	@echo "  make generate-models - Regenerate OAS3-derived models"

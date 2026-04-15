@@ -91,11 +91,11 @@ golangci-lint run ./pkg/...  # Specific package
 
 ### Model Generation
 ```bash
-# Generate models from OpenAPI spec
-swagger generate model -f openapi.yaml -t pkg/ --model-package=models --strict-responders
+# Regenerate raw OpenAPI-backed models
+make generate-models
 
-# Generate client from OpenAPI spec (if using generated client)
-swagger generate client -f openapi.yaml -t pkg/ --client-package=legion --skip-models
+# Equivalent direct command
+go generate ./pkg/models
 ```
 
 ## Architecture
@@ -183,9 +183,10 @@ func latLonAltToECEF(lat, lon, alt float64) (x, y, z float64)
 - **pre-push**: Runs `make unit-test` to ensure tests pass
 
 ### Generated vs Hand-written Code
-- Models are generated from `openapi.yaml` using go-swagger
+- `pkg/models/openapi.gen.go` is generated from `openapi.yaml` using `oapi-codegen`
+- `pkg/models/api_types.go` is the repo's hand-written domain model layer used by simulations and the hand-written client
+- `cmd/tools/openapi-normalize` normalizes the OpenAPI 3.1 source spec for generation without forking the checked-in spec
 - Client is hand-written for simplicity and maintainability
-- Never edit files in `pkg/models/` - they're regenerated
 
 ### Environment Configuration
 Environments are stored in `~/.legion/config.yaml` with structure:
@@ -207,7 +208,7 @@ environments:
 
 4. **Logging**: Use the `pkg/logger` package for structured logging with proper levels (Info, Error, Warn, Progress, Success).
 
-5. **Model Generation**: After updating `openapi.yaml`, regenerate models and handle any breaking changes in the hand-written client.
+5. **Model Generation**: After updating `openapi.yaml`, run `make generate-models` and handle any breaking changes in the hand-written client.
 
 ## CI/CD Pipeline
 

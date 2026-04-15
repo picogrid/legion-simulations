@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/picogrid/legion-simulations/pkg/client"
 	"github.com/picogrid/legion-simulations/pkg/logger"
@@ -143,14 +142,12 @@ func (s *SimpleSimulation) createEntity(ctx context.Context, legionClient *clien
 	if err != nil {
 		return "", fmt.Errorf("invalid organization ID: %w", err)
 	}
-	orgIDStrfmt := strfmt.UUID(orgID.String())
-
 	searchFilters := &models.SearchFilters{
 		Name:     droneName,
 		Category: []models.Category{category},
 	}
 	searchReq := &models.SearchEntitiesRequest{
-		OrganizationID: &orgIDStrfmt,
+		OrganizationID: &orgID,
 		Filters:        searchFilters,
 	}
 
@@ -183,7 +180,7 @@ func (s *SimpleSimulation) createEntity(ctx context.Context, legionClient *clien
 
 	req := &models.CreateEntityRequest{
 		Name:           &droneName,
-		OrganizationID: &orgIDStrfmt,
+		OrganizationID: &orgID,
 		Type:           &entityType,
 		Category:       &category,
 		Status:         &status,
@@ -234,9 +231,11 @@ func (s *SimpleSimulation) updateLocations(ctx context.Context, legionClient *cl
 			Coordinates: []float64{x, y, z},
 		}
 
+		recordedAt := time.Now()
 		req := &models.CreateEntityLocationRequest{
-			Position: position,
-			Source:   "Simple-Simulation",
+			Position:   position,
+			Source:     "Simple-Simulation",
+			RecordedAt: &recordedAt,
 		}
 
 		_, err := legionClient.CreateEntityLocation(ctx, entityID, req)
