@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Grouped so all action bumps land in one PR per week, never one-per-action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
