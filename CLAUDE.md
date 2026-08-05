@@ -215,7 +215,8 @@ environments:
 GitHub Actions workflows execute in sequence, orchestrated by
 `.github/workflows/pull_request.yml`:
 1. Lint and vulnerability scan (`.github/workflows/lint.yml`): blocking
-   golangci-lint plus a `govulncheck` job.
+   golangci-lint plus a `govulncheck` job. Both upload SARIF to the
+   Security > Code scanning tab so findings are visible outside the run logs.
 2. Unit tests (`.github/workflows/unit-tests.yml`).
 
 Note: this repository is public, so it cannot consume the internal

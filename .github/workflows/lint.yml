@@ -8,34 +8,69 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required to upload SARIF results to the Security > Code scanning tab.
+      security-events: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set Up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
         with:
-          args: --timeout=30m --config=./.golangci.yaml
+          # Emit human-readable output to the log and a SARIF report for upload.
+          args: --timeout=30m --config=./.golangci.yaml --output.text.path=stdout --output.sarif.path=golangci.sarif
           version: v2.12.2
+
+      - name: Upload golangci-lint SARIF
+        # Upload even when lint fails, and never fail the job on an upload hiccup
+        # (for example when code scanning is briefly unavailable).
+        if: ${{ always() && hashFiles('golangci.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          sarif_file: golangci.sarif
+          category: golangci-lint
 
   govulncheck:
     name: Vulnerability Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set Up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
 
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
       - name: Run govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+        # Text output is the blocking gate: govulncheck exits non-zero when the
+        # code calls a known vulnerability.
+        run: govulncheck ./...
+
+      - name: Generate govulncheck SARIF
+        # SARIF mode always exits zero, so it runs after the gate and even when
+        # the gate above fails, to keep the Security tab in sync.
+        if: always()
+        run: govulncheck -format sarif ./... > govulncheck.sarif
+
+      - name: Upload govulncheck SARIF
+        if: ${{ always() && hashFiles('govulncheck.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          sarif_file: govulncheck.sarif
+          category: govulncheck
