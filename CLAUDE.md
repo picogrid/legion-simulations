@@ -212,10 +212,16 @@ environments:
 
 ## CI/CD Pipeline
 
-GitHub Actions workflows execute in sequence:
-1. Linting (`.github/workflows/lint.yml`)
-2. Unit Tests (`.github/workflows/unit-tests.yml`)
-3. Pull Request orchestration (`.github/workflows/pull_request.yml`)
+GitHub Actions workflows execute in sequence, orchestrated by
+`.github/workflows/pull_request.yml`:
+1. Lint and vulnerability scan (`.github/workflows/lint.yml`): blocking
+   golangci-lint plus a `govulncheck` job.
+2. Unit tests (`.github/workflows/unit-tests.yml`).
+
+Note: this repository is public, so it cannot consume the internal
+`picogrid/.github` `go-ci` reusable workflow (GitHub blocks public repositories
+from calling internal reusable workflows). The workflows above replicate the
+key go-ci gates locally instead.
 
 ## Enabled Linters
 

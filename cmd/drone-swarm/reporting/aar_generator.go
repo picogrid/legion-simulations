@@ -350,15 +350,15 @@ func (g *AARGenerator) saveHTML(aar *AAR, filename string) error {
 
 	// Title and metadata
 	sb.WriteString("<h1>After Action Report</h1>\n")
-	sb.WriteString(fmt.Sprintf("<p><strong>Simulation ID:</strong> %s</p>\n", aar.Metadata.SimulationID))
-	sb.WriteString(fmt.Sprintf("<p><strong>Generated:</strong> %s</p>\n", aar.Metadata.GeneratedAt.Format("2006-01-02 15:04:05")))
-	sb.WriteString(fmt.Sprintf("<p><strong>Duration:</strong> %s</p>\n", aar.Metadata.Duration))
+	fmt.Fprintf(&sb, "<p><strong>Simulation ID:</strong> %s</p>\n", aar.Metadata.SimulationID)
+	fmt.Fprintf(&sb, "<p><strong>Generated:</strong> %s</p>\n", aar.Metadata.GeneratedAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&sb, "<p><strong>Duration:</strong> %s</p>\n", aar.Metadata.Duration)
 
 	// Executive Summary
 	sb.WriteString("<h2>Executive Summary</h2>\n")
-	sb.WriteString(fmt.Sprintf("<p><strong>Outcome:</strong> %s</p>\n", aar.Summary.Outcome))
-	sb.WriteString(fmt.Sprintf("<p><strong>Winner:</strong> <span class='team-%s'>%s</span></p>\n",
-		strings.ToLower(aar.Summary.WinningTeam), aar.Summary.WinningTeam))
+	fmt.Fprintf(&sb, "<p><strong>Outcome:</strong> %s</p>\n", aar.Summary.Outcome)
+	fmt.Fprintf(&sb, "<p><strong>Winner:</strong> <span class='team-%s'>%s</span></p>\n",
+		strings.ToLower(aar.Summary.WinningTeam), aar.Summary.WinningTeam)
 	sb.WriteString("<div class='metric'><span class='metric-label'>Total Engagements:</span> <span class='metric-value'>" +
 		fmt.Sprintf("%d</span></div>\n", aar.Summary.TotalEngagements))
 	sb.WriteString("<div class='metric'><span class='metric-label'>Total Losses:</span> <span class='metric-value'>" +
@@ -371,12 +371,12 @@ func (g *AARGenerator) saveHTML(aar *AAR, filename string) error {
 	for teamName, analysis := range aar.TeamAnalysis {
 		statusClass := fmt.Sprintf("status-%s", strings.ToLower(analysis.FinalStatus))
 		teamClass := fmt.Sprintf("team-%s", strings.ToLower(teamName))
-		sb.WriteString(fmt.Sprintf("<tr><td class='%s'>%s</td>", teamClass, teamName))
-		sb.WriteString(fmt.Sprintf("<td class='%s'>%s</td>", statusClass, analysis.FinalStatus))
-		sb.WriteString(fmt.Sprintf("<td>%d/%d</td>", analysis.FinalStrength, analysis.InitialStrength))
-		sb.WriteString(fmt.Sprintf("<td>%d</td>", analysis.Losses))
-		sb.WriteString(fmt.Sprintf("<td>%d</td>", analysis.Kills))
-		sb.WriteString(fmt.Sprintf("<td>%.2f</td></tr>\n", analysis.EffectivenessRating))
+		fmt.Fprintf(&sb, "<tr><td class='%s'>%s</td>", teamClass, teamName)
+		fmt.Fprintf(&sb, "<td class='%s'>%s</td>", statusClass, analysis.FinalStatus)
+		fmt.Fprintf(&sb, "<td>%d/%d</td>", analysis.FinalStrength, analysis.InitialStrength)
+		fmt.Fprintf(&sb, "<td>%d</td>", analysis.Losses)
+		fmt.Fprintf(&sb, "<td>%d</td>", analysis.Kills)
+		fmt.Fprintf(&sb, "<td>%.2f</td></tr>\n", analysis.EffectivenessRating)
 	}
 	sb.WriteString("</table>\n")
 
@@ -385,9 +385,9 @@ func (g *AARGenerator) saveHTML(aar *AAR, filename string) error {
 		sb.WriteString("<h2>Recommendations</h2>\n")
 		for _, rec := range aar.Recommendations {
 			priorityClass := fmt.Sprintf("priority-%s", strings.ToLower(rec.Priority))
-			sb.WriteString(fmt.Sprintf("<h3>%s <span class='%s'>%s</span></h3>\n", rec.Title, priorityClass, rec.Priority))
-			sb.WriteString(fmt.Sprintf("<p>%s</p>\n", rec.Description))
-			sb.WriteString(fmt.Sprintf("<p><em>Expected Benefit: %s</em></p>\n", rec.ExpectedBenefit))
+			fmt.Fprintf(&sb, "<h3>%s <span class='%s'>%s</span></h3>\n", rec.Title, priorityClass, rec.Priority)
+			fmt.Fprintf(&sb, "<p>%s</p>\n", rec.Description)
+			fmt.Fprintf(&sb, "<p><em>Expected Benefit: %s</em></p>\n", rec.ExpectedBenefit)
 		}
 	}
 
@@ -404,21 +404,21 @@ func (g *AARGenerator) saveMarkdown(aar *AAR, filename string) error {
 
 	// Header
 	sb.WriteString("# After Action Report\n\n")
-	sb.WriteString(fmt.Sprintf("**Simulation ID:** %s\n", aar.Metadata.SimulationID))
-	sb.WriteString(fmt.Sprintf("**Generated:** %s\n", aar.Metadata.GeneratedAt.Format("2006-01-02 15:04:05")))
-	sb.WriteString(fmt.Sprintf("**Duration:** %s\n\n", aar.Metadata.Duration))
+	fmt.Fprintf(&sb, "**Simulation ID:** %s\n", aar.Metadata.SimulationID)
+	fmt.Fprintf(&sb, "**Generated:** %s\n", aar.Metadata.GeneratedAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&sb, "**Duration:** %s\n\n", aar.Metadata.Duration)
 
 	// Executive Summary
 	sb.WriteString("## Executive Summary\n\n")
-	sb.WriteString(fmt.Sprintf("**Outcome:** %s\n\n", aar.Summary.Outcome))
-	sb.WriteString(fmt.Sprintf("**Winner:** %s\n\n", aar.Summary.WinningTeam))
-	sb.WriteString(fmt.Sprintf("**Total Engagements:** %d\n\n", aar.Summary.TotalEngagements))
-	sb.WriteString(fmt.Sprintf("**Total Losses:** %d\n\n", aar.Summary.TotalLosses))
+	fmt.Fprintf(&sb, "**Outcome:** %s\n\n", aar.Summary.Outcome)
+	fmt.Fprintf(&sb, "**Winner:** %s\n\n", aar.Summary.WinningTeam)
+	fmt.Fprintf(&sb, "**Total Engagements:** %d\n\n", aar.Summary.TotalEngagements)
+	fmt.Fprintf(&sb, "**Total Losses:** %d\n\n", aar.Summary.TotalLosses)
 
 	if len(aar.Summary.KeyEvents) > 0 {
 		sb.WriteString("### Key Events\n")
 		for _, event := range aar.Summary.KeyEvents {
-			sb.WriteString(fmt.Sprintf("- %s\n", event))
+			fmt.Fprintf(&sb, "- %s\n", event)
 		}
 		sb.WriteString("\n")
 	}
@@ -426,44 +426,44 @@ func (g *AARGenerator) saveMarkdown(aar *AAR, filename string) error {
 	// Team Analysis
 	sb.WriteString("## Team Analysis\n\n")
 	for teamName, analysis := range aar.TeamAnalysis {
-		sb.WriteString(fmt.Sprintf("### %s\n\n", teamName))
-		sb.WriteString(fmt.Sprintf("- **Final Status:** %s\n", analysis.FinalStatus))
-		sb.WriteString(fmt.Sprintf("- **Strength:** %d/%d (%.1f%% survival rate)\n",
+		fmt.Fprintf(&sb, "### %s\n\n", teamName)
+		fmt.Fprintf(&sb, "- **Final Status:** %s\n", analysis.FinalStatus)
+		fmt.Fprintf(&sb, "- **Strength:** %d/%d (%.1f%% survival rate)\n",
 			analysis.FinalStrength, analysis.InitialStrength,
-			float64(analysis.FinalStrength)/float64(analysis.InitialStrength)*100))
-		sb.WriteString(fmt.Sprintf("- **Losses:** %d\n", analysis.Losses))
-		sb.WriteString(fmt.Sprintf("- **Kills:** %d\n", analysis.Kills))
-		sb.WriteString(fmt.Sprintf("- **Effectiveness:** %.2f\n\n", analysis.EffectivenessRating))
+			float64(analysis.FinalStrength)/float64(analysis.InitialStrength)*100)
+		fmt.Fprintf(&sb, "- **Losses:** %d\n", analysis.Losses)
+		fmt.Fprintf(&sb, "- **Kills:** %d\n", analysis.Kills)
+		fmt.Fprintf(&sb, "- **Effectiveness:** %.2f\n\n", analysis.EffectivenessRating)
 	}
 
 	// Engagement Analysis
 	sb.WriteString("## Engagement Analysis\n\n")
-	sb.WriteString(fmt.Sprintf("- **Total Engagements:** %d\n", aar.Engagements.TotalEngagements))
-	sb.WriteString(fmt.Sprintf("- **Successful Hits:** %d (%.1f%% hit rate)\n",
-		aar.Engagements.SuccessfulHits, aar.Engagements.HitRate*100))
-	sb.WriteString(fmt.Sprintf("- **Average Range:** %.0fm\n\n", aar.Engagements.AverageEngagementRange))
+	fmt.Fprintf(&sb, "- **Total Engagements:** %d\n", aar.Engagements.TotalEngagements)
+	fmt.Fprintf(&sb, "- **Successful Hits:** %d (%.1f%% hit rate)\n",
+		aar.Engagements.SuccessfulHits, aar.Engagements.HitRate*100)
+	fmt.Fprintf(&sb, "- **Average Range:** %.0fm\n\n", aar.Engagements.AverageEngagementRange)
 
 	// Threat Analysis
 	if g.config.DetailLevel != "summary" {
 		sb.WriteString("## Threat Analysis\n\n")
-		sb.WriteString(fmt.Sprintf("- **Threats Identified:** %d\n", aar.ThreatAnalysis.TotalThreatsIdentified))
-		sb.WriteString(fmt.Sprintf("- **Threats Neutralized:** %d\n", aar.ThreatAnalysis.ThreatsNeutralized))
-		sb.WriteString(fmt.Sprintf("- **Peak Threat Level:** %s\n\n", aar.ThreatAnalysis.PeakThreatLevel))
+		fmt.Fprintf(&sb, "- **Threats Identified:** %d\n", aar.ThreatAnalysis.TotalThreatsIdentified)
+		fmt.Fprintf(&sb, "- **Threats Neutralized:** %d\n", aar.ThreatAnalysis.ThreatsNeutralized)
+		fmt.Fprintf(&sb, "- **Peak Threat Level:** %s\n\n", aar.ThreatAnalysis.PeakThreatLevel)
 	}
 
 	// System Performance
 	sb.WriteString("## System Performance\n\n")
-	sb.WriteString(fmt.Sprintf("- **Average Update Time:** %.2fms\n", aar.Performance.AverageUpdateTime))
-	sb.WriteString(fmt.Sprintf("- **Peak Entity Count:** %d\n", aar.Performance.PeakEntityCount))
-	sb.WriteString(fmt.Sprintf("- **Simulation Stability:** %.1f%%\n\n", aar.Performance.SimulationStability*100))
+	fmt.Fprintf(&sb, "- **Average Update Time:** %.2fms\n", aar.Performance.AverageUpdateTime)
+	fmt.Fprintf(&sb, "- **Peak Entity Count:** %d\n", aar.Performance.PeakEntityCount)
+	fmt.Fprintf(&sb, "- **Simulation Stability:** %.1f%%\n\n", aar.Performance.SimulationStability*100)
 
 	// Recommendations
 	if len(aar.Recommendations) > 0 {
 		sb.WriteString("## Recommendations\n\n")
 		for _, rec := range aar.Recommendations {
-			sb.WriteString(fmt.Sprintf("### %s (%s Priority)\n", rec.Title, rec.Priority))
-			sb.WriteString(fmt.Sprintf("%s\n\n", rec.Description))
-			sb.WriteString(fmt.Sprintf("**Expected Benefit:** %s\n\n", rec.ExpectedBenefit))
+			fmt.Fprintf(&sb, "### %s (%s Priority)\n", rec.Title, rec.Priority)
+			fmt.Fprintf(&sb, "%s\n\n", rec.Description)
+			fmt.Fprintf(&sb, "**Expected Benefit:** %s\n\n", rec.ExpectedBenefit)
 		}
 	}
 
@@ -471,10 +471,10 @@ func (g *AARGenerator) saveMarkdown(aar *AAR, filename string) error {
 	if len(aar.Lessons) > 0 {
 		sb.WriteString("## Lessons Learned\n\n")
 		for _, lesson := range aar.Lessons {
-			sb.WriteString(fmt.Sprintf("### %s\n", lesson.Category))
-			sb.WriteString(fmt.Sprintf("**Observation:** %s\n\n", lesson.Observation))
-			sb.WriteString(fmt.Sprintf("**Impact:** %s\n\n", lesson.Impact))
-			sb.WriteString(fmt.Sprintf("**Recommendation:** %s\n\n", lesson.Recommendation))
+			fmt.Fprintf(&sb, "### %s\n", lesson.Category)
+			fmt.Fprintf(&sb, "**Observation:** %s\n\n", lesson.Observation)
+			fmt.Fprintf(&sb, "**Impact:** %s\n\n", lesson.Impact)
+			fmt.Fprintf(&sb, "**Recommendation:** %s\n\n", lesson.Recommendation)
 		}
 	}
 
