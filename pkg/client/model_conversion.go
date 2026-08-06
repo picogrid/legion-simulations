@@ -12,7 +12,7 @@ import (
 )
 
 func toOpenapiUUID(id uuid.UUID) openapi_types.UUID {
-	return openapi_types.UUID(id)
+	return id
 }
 
 func toOpenapiUUIDPtr(id *uuid.UUID) *openapi_types.UUID {
@@ -25,7 +25,7 @@ func toOpenapiUUIDPtr(id *uuid.UUID) *openapi_types.UUID {
 }
 
 func fromOpenapiUUID(id openapi_types.UUID) uuid.UUID {
-	return uuid.UUID(id)
+	return id
 }
 
 func parseTime(value string) (time.Time, error) {
